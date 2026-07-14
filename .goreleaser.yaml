@@ -1,0 +1,48 @@
+# Copyright © 2026 envaar
+# SPDX-License-Identifier: Apache-2.0
+
+version: 2
+
+project_name: vaar
+
+builds:
+  - id: vaar
+    main: ./cmd/vaar
+    binary: vaar
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -buildvcs=false
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/envaar/vaar/internal/cli.buildVersion={{ .Version }}
+
+archives:
+  - id: vaar
+    ids:
+      - vaar
+    name_template: "vaar_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "vaar_checksums.txt"
+  algorithm: sha256
+
+release:
+  github:
+    owner: envaar
+    name: vaar
+  mode: keep-existing
+  replace_existing_artifacts: true
+
+changelog:
+  disable: true

@@ -1,0 +1,30 @@
+# Copyright © 2026 envaar
+# SPDX-License-Identifier: Apache-2.0
+
+# Local environment files
+/.env.
+/.env.local
+/.env.development
+/.env.test
+/.env.production
+/.envrc
+
+# Build outputs
+/bin/
+/dist/
+/build/
+*.exe
+*.test
+*.out
+*.coverprofile
+coverage.out
+
+# Editor and OS noise
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Local maintainer planning notes
+temp_docs/

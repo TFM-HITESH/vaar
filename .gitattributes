@@ -1,0 +1,5 @@
+# Copyright © 2026 envaar
+# SPDX-License-Identifier: Apache-2.0
+
+* text=auto eol=lf
+*.pdf binary
