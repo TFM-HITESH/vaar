@@ -122,6 +122,48 @@ func TestLintCommandReportsFindingsInTextAndJSON(t *testing.T) {
 	})
 }
 
+func TestLintCommandOnlyValueWithoutQuotesReportsOnlyThatRule(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	if err := os.WriteFile(path, []byte("KEY=hello world\nKEY=other\n"), 0o644); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	stdout, err := runLintCommand(t, root, "--only=value-without-quotes")
+	if err == nil {
+		t.Fatal("expected findings")
+	}
+	if got := ExitCode(err); got != ExitFindings {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitFindings)
+	}
+
+	want := "error value-without-quotes .env:1 value containing whitespace should be enclosed in quotes\n"
+	if stdout != want {
+		t.Fatalf("unexpected output: got %q want %q", stdout, want)
+	}
+}
+
+func TestLintCommandSkipValueWithoutQuotesSuppressesThatRule(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	if err := os.WriteFile(path, []byte("KEY=hello world\nKEY=other\n"), 0o644); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	stdout, err := runLintCommand(t, root, "--skip=value-without-quotes")
+	if err == nil {
+		t.Fatal("expected remaining findings")
+	}
+	if got := ExitCode(err); got != ExitFindings {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitFindings)
+	}
+
+	want := "error duplicate-key .env:2 KEY is defined more than once\n"
+	if stdout != want {
+		t.Fatalf("unexpected output: got %q want %q", stdout, want)
+	}
+}
+
 func TestLintCommandRejectsOutputWithoutJSON(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, ".env")
