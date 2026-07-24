@@ -7,22 +7,20 @@ package cli
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
 
 func TestDiffCommandReportsDifferencesForRelativePaths(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\nCOMMON=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("BAR=example\nCOMMON=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\nCOMMON=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "BAR=example\nCOMMON=example\n")
 
 	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", ".env.example")
 	if err == nil {
@@ -44,12 +42,8 @@ func TestDiffCommandReportsDifferencesForAbsolutePaths(t *testing.T) {
 	root := t.TempDir()
 	left := filepath.Join(root, "left.env")
 	right := filepath.Join(root, "right.env")
-	if err := os.WriteFile(left, []byte("DEBUG=true\nFOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(right, []byte("DATABASE_URL=postgres://example\nBAR=example\nBAZ=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, left, "DEBUG=true\nFOO=local\n")
+	mustWriteFile(t, right, "DATABASE_URL=postgres://example\nBAR=example\nBAZ=example\n")
 
 	stdout, stderr, err := runDiffCommandWithStreams(t, root, left, right)
 	if err == nil {
@@ -72,12 +66,8 @@ func TestDiffCommandSupportsPathsContainingSpaces(t *testing.T) {
 	root := t.TempDir()
 	left := filepath.Join(root, "local env")
 	right := filepath.Join(root, "example env")
-	if err := os.WriteFile(left, []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(right, []byte("BAR=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, left, "FOO=local\n")
+	mustWriteFile(t, right, "BAR=example\n")
 
 	stdout, stderr, err := runDiffCommandWithStreams(t, root, "local env", "example env")
 	if err == nil {
@@ -97,12 +87,8 @@ func TestDiffCommandSupportsPathsContainingSpaces(t *testing.T) {
 
 func TestDiffCommandMatchingFilesExitZero(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\nCOMMON=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("COMMON=example\nFOO=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\nCOMMON=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "COMMON=example\nFOO=example\n")
 
 	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", ".env.example")
 	if err != nil {
@@ -119,14 +105,167 @@ func TestDiffCommandMatchingFilesExitZero(t *testing.T) {
 	}
 }
 
+func TestDiffCommandQuietSuppressesDifferenceOutput(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\nCOMMON=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "BAR=example\nCOMMON=example\n")
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", ".env.example", "--quiet")
+	if err == nil {
+		t.Fatal("expected differences")
+	}
+	if got := ExitCode(err); got != ExitFindings {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitFindings)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+}
+
+func TestDiffCommandQuietSuppressesSuccessOutput(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "FOO=example\n")
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", ".env.example", "--quiet")
+	if err != nil {
+		t.Fatalf("expected matching files to succeed, got %v", err)
+	}
+	if got := ExitCode(err); got != ExitOK {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitOK)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout, got %q", stdout)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+}
+
+func TestDiffCommandQuietStillReportsOperationalFailures(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", ".env.example", "--quiet")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := ExitCode(err); got != ExitInternal {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitInternal)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout, got %q", stdout)
+	}
+	want := "error: reading .env.example: file does not exist\n"
+	if stderr != want {
+		t.Fatalf("unexpected stderr: got %q want %q", stderr, want)
+	}
+}
+
+func TestDiffCommandJSONWithDifferences(t *testing.T) {
+	root := t.TempDir()
+	left := filepath.Join(root, ".env")
+	right := filepath.Join(root, ".env.example")
+	mustWriteFile(t, left, "ZOO=left-secret\nFOO=left-token\nCOMMON=left\n")
+	mustWriteFile(t, right, "BAR=right-value\nAAA=right-secret\nCOMMON=right\n")
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, left, right, "--json")
+	if err == nil {
+		t.Fatal("expected differences")
+	}
+	if got := ExitCode(err); got != ExitFindings {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitFindings)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+
+	output := parseDiffJSON(t, stdout)
+	if output.Left != left || output.Right != right {
+		t.Fatalf("unexpected paths: got left=%q right=%q", output.Left, output.Right)
+	}
+	if !slices.Equal(output.MissingFromLeft, []string{"AAA", "BAR"}) {
+		t.Fatalf("unexpected missing_from_left: %#v", output.MissingFromLeft)
+	}
+	if !slices.Equal(output.MissingFromRight, []string{"FOO", "ZOO"}) {
+		t.Fatalf("unexpected missing_from_right: %#v", output.MissingFromRight)
+	}
+	if !output.Different {
+		t.Fatal("expected different=true")
+	}
+	for _, value := range []string{"left-secret", "left-token", "right-value", "right-secret"} {
+		if strings.Contains(stdout, value) {
+			t.Fatalf("JSON leaked value %q in %q", value, stdout)
+		}
+	}
+}
+
+func TestDiffCommandJSONMatchingFiles(t *testing.T) {
+	root := t.TempDir()
+	left := filepath.Join(root, ".env")
+	right := filepath.Join(root, ".env.example")
+	mustWriteFile(t, left, "FOO=123\nCOMMON=local-secret\n")
+	mustWriteFile(t, right, "COMMON=example-secret\nFOO=456\n")
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, left, right, "--json")
+	if err != nil {
+		t.Fatalf("expected matching files to succeed, got %v", err)
+	}
+	if got := ExitCode(err); got != ExitOK {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitOK)
+	}
+	if stderr != "" {
+		t.Fatalf("expected no stderr, got %q", stderr)
+	}
+
+	output := parseDiffJSON(t, stdout)
+	if output.Left != left || output.Right != right {
+		t.Fatalf("unexpected paths: got left=%q right=%q", output.Left, output.Right)
+	}
+	if len(output.MissingFromLeft) != 0 {
+		t.Fatalf("unexpected missing_from_left: %#v", output.MissingFromLeft)
+	}
+	if len(output.MissingFromRight) != 0 {
+		t.Fatalf("unexpected missing_from_right: %#v", output.MissingFromRight)
+	}
+	if output.Different {
+		t.Fatal("expected different=false")
+	}
+	for _, value := range []string{"123", "456", "local-secret", "example-secret"} {
+		if strings.Contains(stdout, value) {
+			t.Fatalf("JSON leaked value %q in %q", value, stdout)
+		}
+	}
+}
+
+func TestDiffCommandRejectsQuietWithJSON(t *testing.T) {
+	root := t.TempDir()
+
+	stdout, stderr, err := runDiffCommandWithStreams(t, root, "a.env", "b.env", "--json", "--quiet")
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := ExitCode(err); got != ExitInternal {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitInternal)
+	}
+	if got, want := err.Error(), "--quiet and --json cannot be used together"; got != want {
+		t.Fatalf("unexpected error: got %q want %q", got, want)
+	}
+	if stdout != "" {
+		t.Fatalf("expected no stdout, got %q", stdout)
+	}
+	if want := "error: --quiet and --json cannot be used together\n"; stderr != want {
+		t.Fatalf("unexpected stderr: got %q want %q", stderr, want)
+	}
+}
+
 func TestDiffCommandRejectsWrongArgumentCount(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("FOO=example\n"), 0o644); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "FOO=example\n")
 
 	tests := []struct {
 		name string
@@ -166,9 +305,7 @@ func TestDiffCommandRejectsWrongArgumentCount(t *testing.T) {
 
 func TestDiffCommandReportsOperationalFailures(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
 	if err := os.Mkdir(filepath.Join(root, "configs"), 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
@@ -219,9 +356,7 @@ func TestDiffCommandRejectsNonRegularInput(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
 
 	stdout, stderr, err := runDiffCommandWithStreams(t, root, ".env", "/dev/null")
 	if err == nil {
@@ -248,13 +383,9 @@ func TestDiffCommandReportsUnreadableFile(t *testing.T) {
 	}
 
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
 	locked := filepath.Join(root, ".env.example")
-	if err := os.WriteFile(locked, []byte("FOO=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, locked, "FOO=example\n")
 	t.Cleanup(func() {
 		if err := os.Chmod(locked, 0o644); err != nil {
 			t.Errorf("restore permissions failed: %v", err)
@@ -288,12 +419,8 @@ func TestDiffCommandReportsUnreadableFile(t *testing.T) {
 
 func TestDiffCommandPropagatesStdoutWriteFailures(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\nCOMMON=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("BAR=example\nCOMMON=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\nCOMMON=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "BAR=example\nCOMMON=example\n")
 
 	withWorkingDir(t, root)
 
@@ -315,18 +442,37 @@ func TestDiffCommandPropagatesStdoutWriteFailures(t *testing.T) {
 
 func TestDiffCommandPropagatesSuccessStdoutWriteFailures(t *testing.T) {
 	root := t.TempDir()
-	if err := os.WriteFile(filepath.Join(root, ".env"), []byte("FOO=local\n"), 0o644); err != nil {
-		t.Fatalf("write left failed: %v", err)
-	}
-	if err := os.WriteFile(filepath.Join(root, ".env.example"), []byte("FOO=example\n"), 0o644); err != nil {
-		t.Fatalf("write right failed: %v", err)
-	}
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "FOO=example\n")
 
 	withWorkingDir(t, root)
 
 	cmd := newRootCmd()
 	cmd.SetOut(failingWriter{})
 	cmd.SetArgs([]string{"diff", ".env", ".env.example"})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected an error")
+	}
+	if got := ExitCode(err); got != ExitInternal {
+		t.Fatalf("unexpected exit code: got %d want %d", got, ExitInternal)
+	}
+	if !strings.Contains(err.Error(), "writing diff output failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestDiffCommandPropagatesJSONStdoutWriteFailures(t *testing.T) {
+	root := t.TempDir()
+	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\n")
+	mustWriteFile(t, filepath.Join(root, ".env.example"), "FOO=example\n")
+
+	withWorkingDir(t, root)
+
+	cmd := newRootCmd()
+	cmd.SetOut(failingWriter{})
+	cmd.SetArgs([]string{"diff", ".env", ".env.example", "--json"})
 
 	err := cmd.Execute()
 	if err == nil {
@@ -353,9 +499,31 @@ func runDiffCommandWithStreams(t *testing.T, root string, args ...string) (strin
 
 	err := cmd.Execute()
 	if err != nil && !IsExitError(err) {
-		writeCLIError(&stderr, err)
+		writeTestCLIError(&stderr, err)
 	}
 	return stdout.String(), stderr.String(), err
+}
+
+func parseDiffJSON(t *testing.T, output string) diffJSON {
+	t.Helper()
+
+	var payload diffJSON
+	if err := json.Unmarshal([]byte(output), &payload); err != nil {
+		t.Fatalf("invalid JSON: %v", err)
+	}
+	return payload
+}
+
+func mustWriteFile(t *testing.T, path, content string) {
+	t.Helper()
+
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Fatalf("write %s failed: %v", path, err)
+	}
+}
+
+func writeTestCLIError(w *bytes.Buffer, err error) {
+	_, _ = w.WriteString("error: " + err.Error() + "\n")
 }
 
 type failingWriter struct{}
