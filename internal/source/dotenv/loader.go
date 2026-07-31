@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package dotenv
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,7 +56,7 @@ func Load(path, displayPath string) (Document, error) {
 	data, readErr := io.ReadAll(file)
 	closeErr := file.Close()
 	if readErr != nil {
-		return Document{}, fmt.Errorf("read dotenv source %q: %w", path, readErr)
+		return Document{}, fmt.Errorf("read dotenv source %q: %w", path, errors.Join(readErr, closeErr))
 	}
 	if closeErr != nil {
 		return Document{}, fmt.Errorf("close dotenv source %q: %w", path, closeErr)
