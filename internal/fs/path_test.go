@@ -44,11 +44,11 @@ func TestResolvePathUsesWorkingDirectoryForEmptyRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve empty-root path failed: %v", err)
 	}
-	canonicalRoot, err := filepath.EvalSymlinks(root)
+	want, err := filepath.Abs("config.env")
 	if err != nil {
-		t.Fatalf("resolve test root symlinks failed: %v", err)
+		t.Fatalf("resolve expected empty-root path failed: %v", err)
 	}
-	if want := filepath.Join(canonicalRoot, "config.env"); got != want {
+	if got != want {
 		t.Fatalf("unexpected empty-root path: got %q want %q", got, want)
 	}
 }
