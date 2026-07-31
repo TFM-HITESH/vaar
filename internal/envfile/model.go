@@ -3,9 +3,10 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package envfile parses dotenv files into a line-aware model and preserves
-// enough metadata to flag BOMs, delimiter mistakes, quote problems, repeated
-// blanks and line-ending drift without guessing at shell semantics.
+// Package envfile contains the temporary line-aware dotenv parser/model used
+// during the source-layer migration. New source-facing loading belongs in
+// internal/source/dotenv; this package remains available for downstream
+// compatibility until its parser model is migrated.
 package envfile
 
 // QuoteState records how Parse handled the value on a line.
