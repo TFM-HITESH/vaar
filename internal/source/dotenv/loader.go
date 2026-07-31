@@ -7,7 +7,9 @@ package dotenv
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"syscall"
 
 	"github.com/envaar/vaar/internal/envfile"
 )
@@ -27,20 +29,36 @@ type Document struct {
 // Load validates, reads and parses one selected dotenv file. displayPath is
 // preserved as the parsed document path for diagnostics and reports.
 func Load(path, displayPath string) (Document, error) {
-	info, err := os.Stat(path)
+	// O_NONBLOCK prevents opening a Unix FIFO from blocking before its type can
+	// be checked. Windows ignores this flag because its file handles are already
+	// non-blocking.
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
 	if err != nil {
+		return Document{}, fmt.Errorf("open dotenv source %q: %w", path, err)
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
 		return Document{}, fmt.Errorf("stat dotenv source %q: %w", path, err)
 	}
+
 	if info.IsDir() {
+		_ = file.Close()
 		return Document{}, fmt.Errorf("dotenv source %q is a directory", path)
 	}
 	if !info.Mode().IsRegular() {
+		_ = file.Close()
 		return Document{}, fmt.Errorf("dotenv source %q is not a regular file", path)
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return Document{}, fmt.Errorf("read dotenv source %q: %w", path, err)
+	data, readErr := io.ReadAll(file)
+	closeErr := file.Close()
+	if readErr != nil {
+		return Document{}, fmt.Errorf("read dotenv source %q: %w", path, readErr)
+	}
+	if closeErr != nil {
+		return Document{}, fmt.Errorf("close dotenv source %q: %w", path, closeErr)
 	}
 
 	parsed, err := envfile.Parse(displayPath, data)

@@ -161,7 +161,10 @@ func TestLoadRejectsMissingPath(t *testing.T) {
 }
 
 func TestLoadRejectsDirectory(t *testing.T) {
-	path := t.TempDir()
+	path := filepath.Join(t.TempDir(), "dotenv-source-directory")
+	if err := os.Mkdir(path, 0o755); err != nil {
+		t.Fatalf("create directory failed: %v", err)
+	}
 
 	_, err := dotenv.Load(path, ".env")
 	if err == nil {
@@ -170,7 +173,7 @@ func TestLoadRejectsDirectory(t *testing.T) {
 	if !strings.Contains(err.Error(), "directory") {
 		t.Fatalf("error does not identify directory input: %v", err)
 	}
-	if !strings.Contains(err.Error(), path) {
+	if !strings.Contains(err.Error(), filepath.Base(path)) {
 		t.Fatalf("error does not identify path: %v", err)
 	}
 }
