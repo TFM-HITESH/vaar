@@ -3,8 +3,8 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package fs finds dotenv files in a repository and skips generated, vendored,
-// and fixture directories that should not influence lint output.
+// Package fs provides reusable filesystem mechanics and deterministic dotenv
+// discovery that skips generated, vendored and fixture directories.
 package fs
 
 import (

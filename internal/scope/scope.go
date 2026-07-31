@@ -3,10 +3,12 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package scope resolves which dotenv files participate in a command.
+// Package scope resolves command input selections and validates paths that
+// depend on those selections.
 package scope
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -41,7 +43,7 @@ func Resolve(opts Options) (Selection, error) {
 		rootLabel = "."
 	}
 
-	absRoot, err := filepath.Abs(rootLabel)
+	absRoot, err := fs.ResolvePath("", rootLabel)
 	if err != nil {
 		return Selection{}, fmt.Errorf("resolve root %q: %w", rootLabel, err)
 	}
@@ -99,29 +101,34 @@ func discoverPaths(root, rootLabel, target, targetDir string) ([]string, error) 
 	return paths, nil
 }
 
-// resolvePath turns a user-supplied path into an absolute path. Relative
-// inputs are joined to root, while absolute inputs are cleaned and returned
-// unchanged.
-func resolvePath(root, path string) string {
-	if filepath.IsAbs(path) {
-		return filepath.Clean(path)
-	}
-	return filepath.Join(root, path)
-}
-
 // statScopeArg resolves a scope input relative to root, checks whether it
 // exists, verifies whether it is a file or directory, and returns the resolved
 // path when the input is usable.
 func statScopeArg(root, arg, flag string, wantDir bool) (string, error) {
-	path := resolvePath(root, arg)
+	path, err := fs.ResolvePath(root, arg)
+	if err != nil {
+		return "", fmt.Errorf("%s path cannot be read: %s: %w", flag, arg, err)
+	}
+
+	if !wantDir {
+		_, err := fs.ValidateRegularFile(path)
+		switch {
+		case err == nil:
+			return path, nil
+		case os.IsNotExist(err):
+			return "", fmt.Errorf("%s path does not exist: %s", flag, arg)
+		case errors.Is(err, fs.ErrNotRegularFile):
+			return "", fmt.Errorf("%s must point to a file: %s", flag, arg)
+		default:
+			return "", fmt.Errorf("%s path cannot be read: %s: %w", flag, arg, err)
+		}
+	}
+
 	info, err := os.Stat(path)
 	switch {
 	case err == nil:
-		if info.IsDir() != wantDir {
-			kind := "a file"
-			if wantDir {
-				kind = "a directory"
-			}
+		if !info.IsDir() {
+			kind := "a directory"
 			return "", fmt.Errorf("%s must point to %s: %s", flag, kind, arg)
 		}
 		return path, nil

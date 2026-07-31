@@ -106,7 +106,7 @@ Use either --target or --target-dir, not both.`,
 			}
 
 			if lintOutput != "" {
-				if err := lint.ValidateOutputPath(scopeSelection, lintOutput); err != nil {
+				if err := scope.ValidateOutputPath(scopeSelection, lintOutput); err != nil {
 					return NewToolError(err.Error(), nil)
 				}
 			}

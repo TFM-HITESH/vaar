@@ -9,7 +9,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -179,51 +178,6 @@ func markFixedFindings(original, remaining []Finding) []Finding {
 	}
 
 	return append(findings, remaining...)
-}
-
-// ValidateOutputPath reports an error if outputPath resolves to the same file
-// as any input path in the resolved selection. The comparison uses canonical
-// absolute paths so relative, cleaned and symlink-equivalent forms are
-// detected.
-func ValidateOutputPath(selection scope.Selection, outputPath string) error {
-	out, err := canonicalPath(outputPath)
-	if err != nil {
-		return fmt.Errorf("resolve output path %q: %w", outputPath, err)
-	}
-
-	for _, input := range selection.Paths {
-		in, err := canonicalPath(input)
-		if err != nil {
-			return fmt.Errorf("resolve input path %q: %w", input, err)
-		}
-		if out == in {
-			return fmt.Errorf("cannot write lint output to %q: the path is also a lint input file", outputPath)
-		}
-	}
-
-	return nil
-}
-
-// canonicalPath returns a stable absolute form of path. It resolves symlinks
-// and cleans . and .. segments. If path does not exist yet (typical for an
-// --output destination), the parent directory is canonicalized and the base
-// name is rejoined so the result can still be compared with existing files.
-func canonicalPath(path string) (string, error) {
-	abs, err := filepath.Abs(path)
-	if err != nil {
-		return "", err
-	}
-
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
-		return resolved, nil
-	}
-
-	dir := filepath.Dir(abs)
-	resolvedDir, err := filepath.EvalSymlinks(dir)
-	if err != nil {
-		return "", err
-	}
-	return filepath.Join(resolvedDir, filepath.Base(abs)), nil
 }
 
 // loadFiles reads each selected path and parses it relative to the configured
