@@ -44,7 +44,11 @@ func TestResolvePathUsesWorkingDirectoryForEmptyRoot(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve empty-root path failed: %v", err)
 	}
-	if want := filepath.Join(root, "config.env"); got != want {
+	canonicalRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatalf("resolve test root symlinks failed: %v", err)
+	}
+	if want := filepath.Join(canonicalRoot, "config.env"); got != want {
 		t.Fatalf("unexpected empty-root path: got %q want %q", got, want)
 	}
 }
@@ -60,7 +64,11 @@ func TestCanonicalPathResolvesExistingAndMissingPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonicalize existing path failed: %v", err)
 	}
-	if want := input; got != want {
+	want, err := filepath.EvalSymlinks(input)
+	if err != nil {
+		t.Fatalf("resolve expected existing path symlinks failed: %v", err)
+	}
+	if got != want {
 		t.Fatalf("unexpected existing canonical path: got %q want %q", got, want)
 	}
 
@@ -73,7 +81,12 @@ func TestCanonicalPathResolvesExistingAndMissingPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonicalize missing path failed: %v", err)
 	}
-	if want := missing; got != want {
+	resolvedParent, err := filepath.EvalSymlinks(filepath.Dir(missing))
+	if err != nil {
+		t.Fatalf("resolve expected missing parent symlinks failed: %v", err)
+	}
+	want = filepath.Join(resolvedParent, filepath.Base(missing))
+	if got != want {
 		t.Fatalf("unexpected missing canonical path: got %q want %q", got, want)
 	}
 }
@@ -97,7 +110,11 @@ func TestCanonicalPathResolvesSymlinkEquivalentPaths(t *testing.T) {
 	if err != nil {
 		t.Fatalf("canonicalize symlink failed: %v", err)
 	}
-	if want := input; got != want {
+	want, err := filepath.EvalSymlinks(input)
+	if err != nil {
+		t.Fatalf("resolve expected symlink target failed: %v", err)
+	}
+	if got != want {
 		t.Fatalf("unexpected symlink canonical path: got %q want %q", got, want)
 	}
 }

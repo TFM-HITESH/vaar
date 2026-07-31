@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package scope
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -283,7 +284,7 @@ func TestValidateOutputPathDetectsCanonicalInputCollisions(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected output/input collision")
 			}
-			want := "cannot write lint output to " + quote(tc.output) + ": the path is also a lint input file"
+			want := fmt.Sprintf("cannot write lint output to %q: the path is also a lint input file", tc.output)
 			if err.Error() != want {
 				t.Fatalf("unexpected collision error: got %q want %q", err, want)
 			}
@@ -352,13 +353,9 @@ func TestValidateOutputPathReportsUnresolvableParent(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected output-path resolution error")
 	}
-	if want := "resolve output path " + quote(filepath.Join("missing", "lint.json")); !strings.Contains(err.Error(), want) {
+	if want := fmt.Sprintf("resolve output path %q", filepath.Join("missing", "lint.json")); !strings.Contains(err.Error(), want) {
 		t.Fatalf("unexpected output-path error: got %q want substring %q", err, want)
 	}
-}
-
-func quote(value string) string {
-	return `"` + value + `"`
 }
 
 func withWorkingDir(t *testing.T, dir string) {
