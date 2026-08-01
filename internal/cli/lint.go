@@ -12,7 +12,7 @@ import (
 
 	"github.com/envaar/vaar/internal/lint"
 	"github.com/envaar/vaar/internal/lint/rules"
-	"github.com/envaar/vaar/internal/report"
+	lintoutput "github.com/envaar/vaar/internal/output/lint"
 	"github.com/envaar/vaar/internal/scope"
 	"github.com/spf13/cobra"
 )
@@ -121,7 +121,7 @@ Use either --target or --target-dir, not both.`,
 			case lintJSON:
 				// JSON output uses the same findings slice as the text path so both
 				// formats stay in lockstep.
-				payload, err := report.JSON(result.Findings)
+				payload, err := lintoutput.JSON(result.Findings)
 				if err != nil {
 					return NewToolError("rendering JSON output failed", err)
 				}
@@ -142,7 +142,7 @@ Use either --target or --target-dir, not both.`,
 					fmt.Fprintln(cmd.OutOrStdout(), string(payload))
 				}
 			default:
-				text := report.Text(result.Findings)
+				text := lintoutput.Text(result.Findings)
 				if text != "" {
 					fmt.Fprint(cmd.OutOrStdout(), text)
 				}
