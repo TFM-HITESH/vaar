@@ -29,7 +29,7 @@ func Text(findings []model.Finding) string {
 		if finding.Fixed {
 			builder.WriteString("[fixed] ")
 		}
-		builder.WriteString(fmt.Sprintf("%s %s %s:%d %s", finding.Severity, finding.Rule, finding.File, finding.Line, finding.Message))
+		fmt.Fprintf(&builder, "%s %s %s:%d %s", finding.Severity, finding.Rule, finding.File, finding.Line, finding.Message)
 	}
 	builder.WriteByte('\n')
 	return builder.String()
