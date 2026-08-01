@@ -8,12 +8,18 @@ package fs
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 )
 
 // ErrNotRegularFile indicates that a path does not identify a regular file.
 var ErrNotRegularFile = errors.New("path is not a regular file")
+
+// ErrIsDirectory identifies the directory case of ErrNotRegularFile so
+// callers can preserve directory-specific error wording.
+var ErrIsDirectory = errors.New("path is a directory")
 
 // ResolvePath returns path as a cleaned absolute path. Relative paths are
 // anchored to root, while an empty root uses the current working directory.
@@ -58,17 +64,10 @@ func CanonicalPath(path string) (string, error) {
 	return filepath.Join(resolvedDir, filepath.Base(abs)), nil
 }
 
-// ValidateRegularFile returns metadata for a readable regular file.
+// ValidateRegularFile returns metadata for a readable regular file. The
+// metadata returned is from the descriptor that was opened for validation.
 func ValidateRegularFile(path string) (os.FileInfo, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return nil, err
-	}
-	if !info.Mode().IsRegular() {
-		return nil, fmt.Errorf("%w: %s", ErrNotRegularFile, path)
-	}
-
-	file, err := os.Open(path)
+	file, info, err := openRegularFile(path)
 	if err != nil {
 		return nil, err
 	}
@@ -78,10 +77,52 @@ func ValidateRegularFile(path string) (os.FileInfo, error) {
 	return info, nil
 }
 
-// ReadFile validates path as a regular file and returns its original bytes.
-func ReadFile(path string) ([]byte, error) {
-	if _, err := ValidateRegularFile(path); err != nil {
+// ReadFile validates path as a regular file and returns its original bytes
+// from the same descriptor used for validation.
+func ReadFile(path string) (data []byte, err error) {
+	file, _, err := openRegularFile(path)
+	if err != nil {
 		return nil, err
 	}
-	return os.ReadFile(path)
+	defer func() {
+		err = errors.Join(err, file.Close())
+	}()
+	return io.ReadAll(file)
+}
+
+func openRegularFile(path string) (*os.File, os.FileInfo, error) {
+	pathInfo, err := os.Stat(path)
+	if err != nil {
+		return nil, nil, err
+	}
+	if err := validateRegularFileInfo(pathInfo, path); err != nil {
+		return nil, nil, err
+	}
+
+	// O_NONBLOCK prevents a TOCTOU replacement with a FIFO from blocking the
+	// process between the pathname check and descriptor validation. Windows
+	// ignores this flag because its file handles are already non-blocking.
+	file, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		return nil, nil, errors.Join(err, file.Close())
+	}
+	if err := validateRegularFileInfo(info, path); err != nil {
+		return nil, nil, errors.Join(err, file.Close())
+	}
+	return file, info, nil
+}
+
+func validateRegularFileInfo(info os.FileInfo, path string) error {
+	if info.IsDir() {
+		return fmt.Errorf("%w: %w", ErrNotRegularFile, ErrIsDirectory)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("%w: %s", ErrNotRegularFile, path)
+	}
+	return nil
 }

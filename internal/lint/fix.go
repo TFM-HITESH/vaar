@@ -7,10 +7,10 @@ package lint
 
 import (
 	"bytes"
-	"os"
 	"sort"
 
 	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/fs"
 )
 
 // fixOrder lists the fixable rule IDs in the order their fix halves must
@@ -83,7 +83,7 @@ func ApplyFixes(rules []Rule, paths []string) (bool, error) {
 	fixes := composeFixes(rules)
 	changed := false
 	for _, path := range paths {
-		data, err := os.ReadFile(path)
+		data, err := fs.ReadFile(path)
 		if err != nil {
 			return false, err
 		}

@@ -177,6 +177,9 @@ func TestValidateRegularFileRejectsDirectory(t *testing.T) {
 	if !errors.Is(err, fs.ErrNotRegularFile) {
 		t.Fatalf("unexpected directory error: %v", err)
 	}
+	if !errors.Is(err, fs.ErrIsDirectory) {
+		t.Fatalf("directory error should preserve ErrIsDirectory: %v", err)
+	}
 }
 
 func TestValidateRegularFileRejectsNonRegularFileWhereSupported(t *testing.T) {
@@ -252,6 +255,9 @@ func TestReadFileRejectsDirectory(t *testing.T) {
 	_, err := fs.ReadFile(t.TempDir())
 	if !errors.Is(err, fs.ErrNotRegularFile) {
 		t.Fatalf("unexpected directory read error: %v", err)
+	}
+	if !errors.Is(err, fs.ErrIsDirectory) {
+		t.Fatalf("directory read error should preserve ErrIsDirectory: %v", err)
 	}
 }
 

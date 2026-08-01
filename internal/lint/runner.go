@@ -8,11 +8,11 @@ package lint
 import (
 	"context"
 	"fmt"
-	"os"
 	"sort"
 	"strings"
 
 	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/fs"
 	"github.com/envaar/vaar/internal/scope"
 )
 
@@ -186,7 +186,7 @@ func loadFiles(selection scope.Selection) ([]envfile.File, error) {
 	files := make([]envfile.File, 0, len(selection.Paths))
 	for _, path := range selection.Paths {
 		display := selection.DisplayPath(path)
-		data, err := os.ReadFile(path)
+		data, err := fs.ReadFile(path)
 		if err != nil {
 			return nil, fmt.Errorf("read %q: %w", display, err)
 		}

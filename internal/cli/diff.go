@@ -7,11 +7,13 @@ package cli
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/envaar/vaar/internal/diff"
+	"github.com/envaar/vaar/internal/fs"
 	"github.com/spf13/cobra"
 )
 
@@ -88,24 +90,18 @@ func exactDiffArgs(_ *cobra.Command, args []string) error {
 }
 
 func readDiffFile(path string) ([]byte, error) {
-	info, err := os.Stat(path)
-	switch {
-	case err == nil:
-		if info.IsDir() {
-			return nil, NewToolError(fmt.Sprintf("%s is a directory, expected a dotenv file", path), nil)
-		}
-		if !info.Mode().IsRegular() {
-			return nil, NewToolError(fmt.Sprintf("%s is not a regular file, expected a dotenv file", path), nil)
-		}
-	case os.IsNotExist(err):
-		return nil, NewToolError(fmt.Sprintf("reading %s: file does not exist", path), nil)
-	default:
-		return nil, NewToolError(fmt.Sprintf("reading %s", path), err)
-	}
-
-	data, err := os.ReadFile(path)
+	data, err := fs.ReadFile(path)
 	if err != nil {
-		return nil, NewToolError(fmt.Sprintf("reading %s", path), err)
+		switch {
+		case errors.Is(err, fs.ErrIsDirectory):
+			return nil, NewToolError(fmt.Sprintf("%s is a directory, expected a dotenv file", path), nil)
+		case errors.Is(err, fs.ErrNotRegularFile):
+			return nil, NewToolError(fmt.Sprintf("%s is not a regular file, expected a dotenv file", path), nil)
+		case errors.Is(err, os.ErrNotExist):
+			return nil, NewToolError(fmt.Sprintf("reading %s: file does not exist", path), nil)
+		default:
+			return nil, NewToolError(fmt.Sprintf("reading %s", path), err)
+		}
 	}
 	return data, nil
 }
