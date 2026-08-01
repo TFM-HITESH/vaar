@@ -18,7 +18,7 @@ import (
 func TestResolvePathAnchorsRelativePathsAndCleansAbsolutePaths(t *testing.T) {
 	root := t.TempDir()
 
-	got, err := fs.ResolvePath(root, filepath.Join("nested", "..", "config.env"))
+	got, err := fs.ResolvePath(root, filepath.FromSlash("nested/../config.env"))
 	if err != nil {
 		t.Fatalf("resolve relative path failed: %v", err)
 	}
@@ -26,7 +26,7 @@ func TestResolvePathAnchorsRelativePathsAndCleansAbsolutePaths(t *testing.T) {
 		t.Fatalf("unexpected relative path: got %q want %q", got, want)
 	}
 
-	absolute := filepath.Join(root, "nested", "..", "absolute.env")
+	absolute := filepath.FromSlash(filepath.ToSlash(root) + "/nested/../absolute.env")
 	got, err = fs.ResolvePath(root, absolute)
 	if err != nil {
 		t.Fatalf("resolve absolute path failed: %v", err)
@@ -116,6 +116,33 @@ func TestCanonicalPathResolvesSymlinkEquivalentPaths(t *testing.T) {
 	}
 	if got != want {
 		t.Fatalf("unexpected symlink canonical path: got %q want %q", got, want)
+	}
+}
+
+func TestCanonicalPathReportsSymlinkResolutionErrors(t *testing.T) {
+	root := t.TempDir()
+	first := filepath.Join(root, "first.env")
+	second := filepath.Join(root, "second.env")
+
+	if err := os.Symlink(second, first); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink creation is unavailable: %v", err)
+		}
+		t.Fatalf("create first symlink failed: %v", err)
+	}
+	if err := os.Symlink(first, second); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink creation is unavailable: %v", err)
+		}
+		t.Fatalf("create second symlink failed: %v", err)
+	}
+
+	_, err := fs.CanonicalPath(first)
+	if err == nil {
+		t.Fatal("expected symlink-loop canonicalization error")
+	}
+	if errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected symlink-loop error, got missing-path error: %v", err)
 	}
 }
 

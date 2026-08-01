@@ -337,6 +337,30 @@ func TestValidateOutputPathDetectsSymlinkCollision(t *testing.T) {
 	}
 }
 
+func TestValidateOutputPathDetectsCaseInsensitiveCollision(t *testing.T) {
+	root := t.TempDir()
+	withWorkingDir(t, root)
+
+	input := filepath.Join(root, "config.env")
+	mustWrite(t, input, "KEY=value\n")
+	output := filepath.Join(root, "CONFIG.ENV")
+	if _, err := os.Stat(output); err != nil {
+		if os.IsNotExist(err) {
+			t.Skip("test filesystem is case-sensitive")
+		}
+		t.Fatalf("stat case-variant output failed: %v", err)
+	}
+
+	err := ValidateOutputPath(Selection{Paths: []string{input}}, output)
+	if err == nil {
+		t.Fatal("expected case-insensitive collision")
+	}
+	want := fmt.Sprintf("cannot write lint output to %q: the path is also a lint input file", output)
+	if err.Error() != want {
+		t.Fatalf("unexpected collision error: got %q want %q", err, want)
+	}
+}
+
 func TestValidateOutputPathReportsUnresolvableParent(t *testing.T) {
 	root := t.TempDir()
 	withWorkingDir(t, root)

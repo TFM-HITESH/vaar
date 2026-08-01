@@ -42,8 +42,12 @@ func CanonicalPath(path string) (string, error) {
 		return "", err
 	}
 
-	if resolved, err := filepath.EvalSymlinks(abs); err == nil {
+	resolved, err := filepath.EvalSymlinks(abs)
+	if err == nil {
 		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
 	}
 
 	dir := filepath.Dir(abs)
