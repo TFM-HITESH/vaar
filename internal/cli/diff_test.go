@@ -9,13 +9,46 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
+
+func TestDiffCLIUsesOutputDiffPackage(t *testing.T) {
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get test working directory: %v", err)
+	}
+
+	diffFile := filepath.Join(workingDirectory, "diff.go")
+	file, err := parser.ParseFile(token.NewFileSet(), diffFile, nil, 0)
+	if err != nil {
+		t.Fatalf("parse diff CLI imports: %v", err)
+	}
+
+	imports := make(map[string]bool, len(file.Imports))
+	for _, imported := range file.Imports {
+		path, err := strconv.Unquote(imported.Path.Value)
+		if err != nil {
+			t.Fatalf("unquote diff CLI import %q: %v", imported.Path.Value, err)
+		}
+		imports[path] = true
+	}
+
+	const outputDiffPath = "github.com/envaar/vaar/internal/output/diff"
+	if !imports[outputDiffPath] {
+		t.Fatalf("diff CLI must import %q", outputDiffPath)
+	}
+	if imports["github.com/envaar/vaar/internal/report"] {
+		t.Fatal("diff CLI must not import internal/report")
+	}
+}
 
 func TestDiffCommandReportsDifferencesForRelativePaths(t *testing.T) {
 	root := t.TempDir()
@@ -504,10 +537,18 @@ func runDiffCommandWithStreams(t *testing.T, root string, args ...string) (strin
 	return stdout.String(), stderr.String(), err
 }
 
-func parseDiffJSON(t *testing.T, output string) diffJSON {
+type diffJSONPayload struct {
+	Left             string   `json:"left"`
+	Right            string   `json:"right"`
+	MissingFromLeft  []string `json:"missing_from_left"`
+	MissingFromRight []string `json:"missing_from_right"`
+	Different        bool     `json:"different"`
+}
+
+func parseDiffJSON(t *testing.T, output string) diffJSONPayload {
 	t.Helper()
 
-	var payload diffJSON
+	var payload diffJSONPayload
 	if err := json.Unmarshal([]byte(output), &payload); err != nil {
 		t.Fatalf("invalid JSON: %v", err)
 	}

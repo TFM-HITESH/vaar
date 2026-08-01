@@ -6,24 +6,15 @@ SPDX-License-Identifier: Apache-2.0
 package cli
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/envaar/vaar/internal/diff"
 	"github.com/envaar/vaar/internal/fs"
+	diffoutput "github.com/envaar/vaar/internal/output/diff"
 	"github.com/spf13/cobra"
 )
-
-type diffJSON struct {
-	Left             string   `json:"left"`
-	Right            string   `json:"right"`
-	MissingFromLeft  []string `json:"missing_from_left"`
-	MissingFromRight []string `json:"missing_from_right"`
-	Different        bool     `json:"different"`
-}
 
 func newDiffCmd() *cobra.Command {
 	var jsonOutput bool
@@ -59,7 +50,7 @@ func newDiffCmd() *cobra.Command {
 			different := result.HasDifferences()
 
 			if jsonOutput {
-				if err := writeDiffJSON(cmd, result, different); err != nil {
+				if err := writeDiffJSON(cmd, result); err != nil {
 					return err
 				}
 			} else if !quiet {
@@ -107,34 +98,11 @@ func readDiffFile(path string) ([]byte, error) {
 }
 
 func writeDiffText(cmd *cobra.Command, result diff.Result) error {
-	if !result.HasDifferences() {
-		return writeDiffLine(cmd, "No key differences found")
-	}
-
-	if len(result.MissingFromLeft) > 0 {
-		if err := writeDiffLine(cmd, missingKeysLine(result.Left, result.MissingFromLeft)); err != nil {
-			return err
-		}
-	}
-	if len(result.MissingFromRight) > 0 {
-		if err := writeDiffLine(cmd, missingKeysLine(result.Right, result.MissingFromRight)); err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return writeDiffLine(cmd, diffoutput.Text(result))
 }
 
-func writeDiffJSON(cmd *cobra.Command, result diff.Result, different bool) error {
-	output := diffJSON{
-		Left:             result.Left,
-		Right:            result.Right,
-		MissingFromLeft:  result.MissingFromLeft,
-		MissingFromRight: result.MissingFromRight,
-		Different:        different,
-	}
-
-	data, err := json.MarshalIndent(output, "", "  ")
+func writeDiffJSON(cmd *cobra.Command, result diff.Result) error {
+	data, err := diffoutput.JSON(result)
 	if err != nil {
 		return NewToolError("rendering diff JSON output failed", err)
 	}
@@ -147,12 +115,4 @@ func writeDiffLine(cmd *cobra.Command, line string) error {
 		return NewToolError("writing diff output failed", err)
 	}
 	return nil
-}
-
-func missingKeysLine(path string, keys []string) string {
-	noun := "key"
-	if len(keys) != 1 {
-		noun = "keys"
-	}
-	return fmt.Sprintf("%s is missing %s: %s", path, noun, strings.Join(keys, ", "))
 }
