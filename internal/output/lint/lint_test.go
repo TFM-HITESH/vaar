@@ -8,8 +8,8 @@ package lint_test
 import (
 	"go/parser"
 	"go/token"
+	"os"
 	"path/filepath"
-	"runtime"
 	"strconv"
 	"testing"
 
@@ -24,12 +24,7 @@ func TestTextReturnsEmptyForNoFindings(t *testing.T) {
 }
 
 func TestLintCLIUsesOutputLintPackage(t *testing.T) {
-	_, testFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("failed to locate the output package test file")
-	}
-
-	repositoryRoot := filepath.Join(filepath.Dir(testFile), "..", "..", "..")
+	repositoryRoot := findRepositoryRoot(t)
 	cliPath := filepath.Join(repositoryRoot, "internal", "cli", "lint.go")
 	file, err := parser.ParseFile(token.NewFileSet(), cliPath, nil, 0)
 	if err != nil {
@@ -52,6 +47,38 @@ func TestLintCLIUsesOutputLintPackage(t *testing.T) {
 	if imports["github.com/envaar/vaar/internal/report"] {
 		t.Fatal("lint CLI must not import internal/report")
 	}
+}
+
+func findRepositoryRoot(t *testing.T) string {
+	t.Helper()
+
+	workingDirectory, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get test working directory: %v", err)
+	}
+
+	directory, err := filepath.Abs(workingDirectory)
+	if err != nil {
+		t.Fatalf("resolve test working directory: %v", err)
+	}
+
+	for {
+		if _, err := os.Stat(filepath.Join(directory, "go.mod")); err == nil {
+			cliPath := filepath.Join(directory, "internal", "cli", "lint.go")
+			if _, err := os.Stat(cliPath); err == nil {
+				return directory
+			}
+		}
+
+		parent := filepath.Dir(directory)
+		if parent == directory {
+			break
+		}
+		directory = parent
+	}
+
+	t.Fatalf("could not find repository root from %q", workingDirectory)
+	return ""
 }
 
 func TestTextRendersFindingExactly(t *testing.T) {
