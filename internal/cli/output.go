@@ -56,10 +56,12 @@ func outputTempDir(path string) string {
 	return fs.TempDirForPath(path)
 }
 
+// outputDirectoryError formats the lint-specific error for directory targets.
 func outputDirectoryError(path string) error {
 	return NewToolError(fmt.Sprintf("cannot write lint output to %q: the path is a directory", path), nil)
 }
 
+// outputWriteError formats the lint-specific error for replacement failures.
 func outputWriteError(path string, err error) error {
 	return NewToolError(fmt.Sprintf("writing JSON output to %s failed", path), err)
 }

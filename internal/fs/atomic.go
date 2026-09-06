@@ -151,6 +151,12 @@ func (f *AtomicFile) Cleanup() error {
 }
 
 func replaceFile(temporary, destination string) error {
+	// Revalidate immediately before replacement so a directory or a symlink to
+	// a directory created after NewAtomicFile cannot be replaced as a file.
+	if err := ValidateFileDestination(destination); err != nil {
+		return err
+	}
+
 	renameErr := os.Rename(temporary, destination)
 	if renameErr == nil {
 		return nil
@@ -169,7 +175,14 @@ func replaceFile(temporary, destination string) error {
 	return renameErr
 }
 
+// replaceFileWindows preserves the original destination while replacing a
+// regular file on Windows, where a direct rename over an existing file may
+// fail because the destination is still open.
 func replaceFileWindows(temporary, destination string) error {
+	if err := ValidateFileDestination(destination); err != nil {
+		return err
+	}
+
 	backup, err := os.CreateTemp(TempDirForPath(destination), filepath.Base(destination)+".vaar-backup-*")
 	if err != nil {
 		return err
@@ -211,6 +224,8 @@ func replaceFileWindows(temporary, destination string) error {
 	return nil
 }
 
+// hasTrailingSeparator reports whether path denotes a directory-like target
+// through a trailing platform-independent or native path separator.
 func hasTrailingSeparator(path string) bool {
 	if path == "" {
 		return false
@@ -219,6 +234,8 @@ func hasTrailingSeparator(path string) bool {
 	return last == '/' || last == os.PathSeparator
 }
 
+// directoryDestinationError preserves the directory identity for callers that
+// need to translate it into a user-facing error.
 func directoryDestinationError(path string) error {
 	return fmt.Errorf("%w: %s", ErrIsDirectory, path)
 }

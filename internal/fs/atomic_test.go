@@ -9,6 +9,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -127,6 +128,60 @@ func TestAtomicFilePreservesDirectoryCreatedAfterOpen(t *testing.T) {
 	}
 	if !info.IsDir() {
 		t.Fatal("destination is no longer a directory")
+	}
+	assertFileBytes(t, kept, []byte("keep"))
+	assertNoAtomicTemporaryFiles(t, root)
+}
+
+func TestAtomicFilePreservesDirectorySymlinkCreatedAfterOpen(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination")
+	target := filepath.Join(root, "target")
+	if err := os.Mkdir(target, 0o755); err != nil {
+		t.Fatalf("create target directory failed: %v", err)
+	}
+	kept := filepath.Join(target, "keep.txt")
+	if err := os.WriteFile(kept, []byte("keep"), 0o644); err != nil {
+		t.Fatalf("write directory sentinel failed: %v", err)
+	}
+
+	file, err := fs.NewAtomicFile(destination)
+	if err != nil {
+		t.Fatalf("create atomic file failed: %v", err)
+	}
+	defer func() { _ = file.Cleanup() }()
+	if _, err := file.Write([]byte("replacement")); err != nil {
+		t.Fatalf("write failed: %v", err)
+	}
+
+	if err := os.Symlink(target, destination); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("symlink creation is unavailable: %v", err)
+		}
+		t.Fatalf("create directory symlink failed: %v", err)
+	}
+
+	err = file.Finalize()
+	if err == nil {
+		t.Fatal("expected finalize to reject a directory symlink created after open")
+	}
+	if !errors.Is(err, fs.ErrIsDirectory) {
+		t.Fatalf("expected ErrIsDirectory, got %v", err)
+	}
+
+	info, err := os.Lstat(destination)
+	if err != nil {
+		t.Fatalf("lstat destination failed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatal("destination symlink was replaced")
+	}
+	linkedTarget, err := os.Readlink(destination)
+	if err != nil {
+		t.Fatalf("read destination symlink failed: %v", err)
+	}
+	if linkedTarget != target {
+		t.Fatalf("destination symlink target changed: got %q want %q", linkedTarget, target)
 	}
 	assertFileBytes(t, kept, []byte("keep"))
 	assertNoAtomicTemporaryFiles(t, root)
