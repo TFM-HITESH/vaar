@@ -8,7 +8,7 @@ package deterministic
 import (
 	"fmt"
 
-	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/lint"
 )
 
@@ -25,22 +25,22 @@ func (keyWithoutValueRule) Description() string {
 
 func (keyWithoutValueRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)
-	for _, file := range ctx.Files {
-		for _, line := range file.Lines {
+	ctx.Snapshot.RangeDocuments(func(document analysis.DocumentView) {
+		document.RangeLines(func(line analysis.Line) {
 			if !line.HasKey {
-				continue
+				return
 			}
-			if line.DelimiterState == envfile.DelimiterMissing || (line.DelimiterState == envfile.DelimiterEquals && !line.HasValue) {
+			if line.DelimiterState == analysis.DelimiterMissing || (line.DelimiterState == analysis.DelimiterEquals && !line.HasValue) {
 				message := fmt.Sprintf("%s is missing a value", line.Key)
 				findings = append(findings, finding(
 					keyWithoutValueRule{}.ID(),
 					lint.SeverityError,
-					file.Path,
+					document.DisplayPath,
 					line.Number,
 					message,
 				))
 			}
-		}
-	}
+		})
+	})
 	return findings, nil
 }

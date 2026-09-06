@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package deterministic
 
 import (
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
 )
@@ -24,19 +25,19 @@ func (trailingWhitespaceRule) Fix(data []byte) []byte { return envfile.TrimTrail
 
 func (trailingWhitespaceRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)
-	for _, file := range ctx.Files {
-		for _, line := range file.Lines {
-			if line.TrailingWhitespace == "" {
-				continue
+	ctx.Snapshot.RangeDocuments(func(document analysis.DocumentView) {
+		document.RangeLines(func(line analysis.Line) {
+			if !line.HasTrailingWhitespace {
+				return
 			}
 			findings = append(findings, finding(
 				trailingWhitespaceRule{}.ID(),
 				lint.SeverityWarn,
-				file.Path,
+				document.DisplayPath,
 				line.Number,
 				"line has trailing whitespace",
 			))
-		}
-	}
+		})
+	})
 	return findings, nil
 }

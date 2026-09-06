@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package deterministic
 
 import (
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
 )
@@ -33,21 +34,25 @@ func (lineEndingRule) Fix(data []byte) []byte {
 
 func (lineEndingRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)
-	for _, file := range ctx.Files {
-		if !file.MixedLineEndings {
-			continue
+	ctx.Snapshot.RangeDocuments(func(document analysis.DocumentView) {
+		if !document.MixedLineEndings {
+			return
 		}
 		lineNumber := 1
-		if len(file.Lines) > 0 {
-			lineNumber = file.Lines[0].Number
-		}
+		hasLine := false
+		document.RangeLines(func(line analysis.Line) {
+			if !hasLine {
+				lineNumber = line.Number
+				hasLine = true
+			}
+		})
 		findings = append(findings, finding(
 			lineEndingRule{}.ID(),
 			lint.SeverityWarn,
-			file.Path,
+			document.DisplayPath,
 			lineNumber,
 			"file uses mixed CRLF and LF line endings",
 		))
-	}
+	})
 	return findings, nil
 }

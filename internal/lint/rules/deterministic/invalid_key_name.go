@@ -8,6 +8,7 @@ package deterministic
 import (
 	"fmt"
 
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/lint"
 )
 
@@ -24,19 +25,19 @@ func (invalidKeyNameRule) Description() string {
 
 func (invalidKeyNameRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)
-	for _, file := range ctx.Files {
-		for _, line := range file.Lines {
+	ctx.Snapshot.RangeDocuments(func(document analysis.DocumentView) {
+		document.RangeLines(func(line analysis.Line) {
 			if !line.HasKey || validKeyName(line.Key) {
-				continue
+				return
 			}
 			findings = append(findings, finding(
 				invalidKeyNameRule{}.ID(),
 				lint.SeverityError,
-				file.Path,
+				document.DisplayPath,
 				line.Number,
 				fmt.Sprintf("%s is not a portable env key name", line.Key),
 			))
-		}
-	}
+		})
+	})
 	return findings, nil
 }

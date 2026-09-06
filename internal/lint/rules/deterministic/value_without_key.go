@@ -6,7 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package deterministic
 
 import (
-	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/lint"
 )
 
@@ -23,21 +23,21 @@ func (valueWithoutKeyRule) Description() string {
 
 func (valueWithoutKeyRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)
-	for _, file := range ctx.Files {
-		for _, line := range file.Lines {
+	ctx.Snapshot.RangeDocuments(func(document analysis.DocumentView) {
+		document.RangeLines(func(line analysis.Line) {
 			if line.HasKey || line.IsBlank || line.IsComment {
-				continue
+				return
 			}
-			if line.DelimiterState == envfile.DelimiterEquals || line.DelimiterState == envfile.DelimiterColon || line.Value != "" {
+			if line.DelimiterState == analysis.DelimiterEquals || line.DelimiterState == analysis.DelimiterColon || line.HasValue {
 				findings = append(findings, finding(
 					valueWithoutKeyRule{}.ID(),
 					lint.SeverityError,
-					file.Path,
+					document.DisplayPath,
 					line.Number,
 					"value appears without a valid key",
 				))
 			}
-		}
-	}
+		})
+	})
 	return findings, nil
 }
