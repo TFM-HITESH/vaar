@@ -3,8 +3,9 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package fs provides reusable filesystem mechanics and deterministic dotenv
-// discovery that skips generated, vendored and fixture directories.
+// Package fs provides reusable filesystem mechanics, atomic file replacement
+// and deterministic dotenv discovery that skips generated, vendored and
+// fixture directories.
 package fs
 
 import (
