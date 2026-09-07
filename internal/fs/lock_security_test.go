@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -70,6 +71,10 @@ func TestOpenPathLockRejectsPreexistingSymlink(t *testing.T) {
 }
 
 func TestVerifyTargetLockRejectsReplacedPath(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not permit replacing an open file")
+	}
+
 	root := t.TempDir()
 	path := filepath.Join(root, "destination")
 	replacement := filepath.Join(root, "replacement")
@@ -91,6 +96,18 @@ func TestVerifyTargetLockRejectsReplacedPath(t *testing.T) {
 
 	if err := verifyTargetLock(path, target); err == nil {
 		t.Fatal("expected replaced path to fail target-lock verification")
+	}
+}
+
+func TestNormalizeLockPathMatchesFilesystemCaseRules(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "CaseSensitive.env")
+	got := normalizeLockPath(path)
+	want := path
+	if runtime.GOOS == "darwin" || runtime.GOOS == "windows" {
+		want = strings.ToLower(path)
+	}
+	if got != want {
+		t.Fatalf("normalized lock path = %q, want %q", got, want)
 	}
 }
 

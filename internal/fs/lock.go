@@ -25,6 +25,7 @@ const pathLockDirectoryPrefix = "vaar-locks-"
 type pathLock struct {
 	pathFile   *os.File
 	targetFile *os.File
+	targetLock *os.File
 }
 
 func acquirePathLock(path string) (*pathLock, error) {
@@ -35,6 +36,7 @@ func acquirePathLock(path string) (*pathLock, error) {
 			return nil, fmt.Errorf("resolve lock path %q: %w", path, err)
 		}
 	}
+	key = normalizeLockPath(key)
 
 	lockDirectory, err := pathLockDirectory()
 	if err != nil {
@@ -55,11 +57,11 @@ func acquirePathLock(path string) (*pathLock, error) {
 		return nil, errors.Join(fmt.Errorf("lock path %q: %w", path, err), pathFile.Close())
 	}
 
-	targetFile, err := openTargetLock(path)
+	targetFile, targetLock, err := openTargetLock(path)
 	if err != nil {
 		return nil, errors.Join(fmt.Errorf("open target lock %q: %w", path, err), unlockAndClose(pathFile))
 	}
-	return &pathLock{pathFile: pathFile, targetFile: targetFile}, nil
+	return &pathLock{pathFile: pathFile, targetFile: targetFile, targetLock: targetLock}, nil
 }
 
 func pathLockDirectory() (string, error) {
@@ -90,6 +92,13 @@ func ensurePrivateLockDir(path string) error {
 	if !info.IsDir() {
 		return fmt.Errorf("lock path is not a directory")
 	}
+	owned, err := lockDirectoryOwnedByCurrentUser(path, info)
+	if err != nil {
+		return err
+	}
+	if !owned {
+		return fmt.Errorf("lock directory is not owned by the current user")
+	}
 
 	// Windows does not expose POSIX permission bits through os.FileMode. On
 	// Unix-like systems, remove group/world access even when a directory from a
@@ -107,6 +116,13 @@ func ensurePrivateLockDir(path string) error {
 		}
 		if info.Mode().Perm()&0o077 != 0 {
 			return fmt.Errorf("lock directory is not private")
+		}
+		owned, err := lockDirectoryOwnedByCurrentUser(path, info)
+		if err != nil {
+			return err
+		}
+		if !owned {
+			return fmt.Errorf("lock directory ownership changed while securing it")
 		}
 	}
 	return nil
@@ -160,10 +176,11 @@ func (l *pathLock) release() error {
 	}
 
 	var targetErr error
-	if l.targetFile != nil {
-		targetErr = unlockAndClose(l.targetFile)
-		l.targetFile = nil
+	if l.targetLock != nil {
+		targetErr = unlockAndClose(l.targetLock)
+		l.targetLock = nil
 	}
+	l.targetFile = nil
 
 	var pathErr error
 	if l.pathFile != nil {
@@ -173,25 +190,31 @@ func (l *pathLock) release() error {
 	return errors.Join(targetErr, pathErr)
 }
 
-func openTargetLock(path string) (*os.File, error) {
+func openTargetLock(path string) (targetFile, targetLock *os.File, err error) {
 	var lastErr error
 	for _, flags := range []int{os.O_RDWR, os.O_WRONLY, os.O_RDONLY} {
-		target, err := os.OpenFile(path, flags, 0)
+		target, err := openTargetFile(path, flags)
 		if err == nil {
 			if err := lockFile(target); err != nil {
-				return nil, errors.Join(err, target.Close())
+				lastErr = errors.Join(err, target.Close())
+				continue
 			}
 			if err := verifyTargetLock(path, target); err != nil {
-				return nil, errors.Join(err, unlockAndClose(target))
+				return nil, nil, errors.Join(err, unlockAndClose(target))
 			}
-			return target, nil
+			return target, target, nil
 		}
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, nil, nil
 		}
 		lastErr = err
 	}
-	return nil, lastErr
+
+	identityLock, identityErr := openIdentityTargetLock(path)
+	if identityErr == nil {
+		return nil, identityLock, nil
+	}
+	return nil, nil, errors.Join(lastErr, identityErr)
 }
 
 func verifyTargetLock(path string, target *os.File) error {
