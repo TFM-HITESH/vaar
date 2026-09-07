@@ -86,11 +86,13 @@ func (p Plan) Changes() []Change {
 }
 
 // Apply resolves source paths through symlinks, validates every planned
-// destination before creating any replacement file, and then revalidates each
-// destination immediately before replacing it. Replacements occur in plan
-// order using same-directory atomic files, with each captured permission mode
-// applied to its temporary file before finalization. It intentionally does not
-// roll back earlier successful replacements if a later replacement fails.
+// destination before creating any replacement file, and then acquires the
+// destination writer lock before revalidating each change. The lock is held
+// through temporary-file preparation and a final stale-state validation before
+// atomic replacement. Replacements occur in plan order using same-directory
+// atomic files, with each captured permission mode applied to its temporary
+// file before finalization. It intentionally does not roll back earlier
+// successful replacements if a later replacement fails.
 func (p Plan) Apply() error {
 	for _, change := range p.changes {
 		if err := validateChange(change); err != nil {
@@ -160,11 +162,17 @@ func applyChange(change Change, destination string) (err error) {
 		}
 	}()
 
+	if err := validateChangeAt(change, destination); err != nil {
+		return fmt.Errorf("revalidate destination: %w", err)
+	}
 	if _, err := file.Write(change.Replacement); err != nil {
 		return fmt.Errorf("write replacement: %w", err)
 	}
 	if err := file.Chmod(change.Mode); err != nil {
 		return fmt.Errorf("preserve permissions: %w", err)
+	}
+	if err := validateChangeAt(change, destination); err != nil {
+		return fmt.Errorf("revalidate before finalization: %w", err)
 	}
 	if err := file.Finalize(); err != nil {
 		return fmt.Errorf("finalize replacement: %w", err)

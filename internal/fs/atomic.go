@@ -18,12 +18,14 @@ import (
 // finalized or cleaned up.
 var ErrAtomicFileClosed = errors.New("atomic file is closed")
 
-// AtomicFile owns a same-directory temporary file until it is finalized or
-// cleaned up. The destination is replaced only after all writes succeed.
+// AtomicFile owns a same-directory temporary file and destination writer lock
+// until it is finalized or cleaned up. The destination is replaced only after
+// all writes succeed.
 type AtomicFile struct {
 	destination string
 	temporary   string
 	file        *os.File
+	lock        *pathLock
 	finalized   bool
 }
 
@@ -63,15 +65,24 @@ func NewAtomicFile(destination string) (*AtomicFile, error) {
 		return nil, err
 	}
 
-	temporary, err := os.CreateTemp(TempDirForPath(destination), "vaar-atomic-*")
+	lock, err := acquirePathLock(destination)
 	if err != nil {
 		return nil, err
+	}
+	if err := ValidateFileDestination(destination); err != nil {
+		return nil, errors.Join(err, lock.release())
+	}
+
+	temporary, err := os.CreateTemp(TempDirForPath(destination), "vaar-atomic-*")
+	if err != nil {
+		return nil, errors.Join(err, lock.release())
 	}
 
 	return &AtomicFile{
 		destination: destination,
 		temporary:   temporary.Name(),
 		file:        temporary,
+		lock:        lock,
 	}, nil
 }
 
@@ -133,7 +144,7 @@ func (f *AtomicFile) Finalize() error {
 
 	f.temporary = ""
 	f.finalized = true
-	return nil
+	return f.Cleanup()
 }
 
 // Cleanup closes any open temporary file and removes an uncommitted temporary
@@ -149,15 +160,20 @@ func (f *AtomicFile) Cleanup() error {
 		f.file = nil
 	}
 
-	if f.temporary == "" {
-		return closeErr
+	var removeErr error
+	if f.temporary != "" {
+		removeErr = os.Remove(f.temporary)
+		if removeErr == nil || os.IsNotExist(removeErr) {
+			f.temporary = ""
+		}
 	}
 
-	removeErr := os.Remove(f.temporary)
-	if removeErr == nil || os.IsNotExist(removeErr) {
-		f.temporary = ""
+	var unlockErr error
+	if f.lock != nil {
+		unlockErr = f.lock.release()
+		f.lock = nil
 	}
-	return errors.Join(closeErr, removeErr)
+	return errors.Join(closeErr, removeErr, unlockErr)
 }
 
 func replaceFile(temporary, destination string) error {
