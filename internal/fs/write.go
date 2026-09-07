@@ -7,6 +7,7 @@ package fs
 
 import (
 	"errors"
+	"io"
 	"os"
 )
 
@@ -22,10 +23,33 @@ func WriteFile(path string, data []byte) error {
 		return err
 	}
 
-	perm := defaultFileMode
-	if info, err := os.Stat(path); err == nil {
-		perm = info.Mode().Perm()
+	var writeErr error
+	if lock.targetFile != nil {
+		writeErr = writeLockedTarget(lock.targetFile, data)
+	} else {
+		perm := defaultFileMode
+		if info, err := os.Stat(path); err == nil {
+			perm = info.Mode().Perm()
+		}
+		writeErr = os.WriteFile(path, data, perm)
 	}
 
-	return errors.Join(os.WriteFile(path, data, perm), lock.release())
+	return errors.Join(writeErr, lock.release())
+}
+
+func writeLockedTarget(file *os.File, data []byte) error {
+	if _, err := file.Seek(0, 0); err != nil {
+		return err
+	}
+	if err := file.Truncate(0); err != nil {
+		return err
+	}
+	written, err := file.Write(data)
+	if err != nil {
+		return err
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
+	}
+	return nil
 }

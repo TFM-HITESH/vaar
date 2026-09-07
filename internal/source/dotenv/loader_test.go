@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/envaar/vaar/internal/fs"
 	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
@@ -105,7 +106,11 @@ func TestLoadCapturesResolvedTargetAndIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load failed: %v", err)
 	}
-	if got, want := document.ResolvedPath, target; got != want {
+	want, err := fs.CanonicalPath(target)
+	if err != nil {
+		t.Fatalf("canonicalize target failed: %v", err)
+	}
+	if got := document.ResolvedPath; got != want {
 		t.Fatalf("resolved path = %q, want %q", got, want)
 	}
 	if !document.Identity.Valid() {

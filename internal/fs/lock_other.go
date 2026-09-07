@@ -7,8 +7,11 @@ SPDX-License-Identifier: Apache-2.0
 
 package fs
 
-import "os"
+import (
+	"errors"
+	"os"
+)
 
-func lockFile(*os.File) error { return nil }
+func lockFile(*os.File) error { return errors.ErrUnsupported }
 
-func unlockFile(*os.File) error { return nil }
+func unlockFile(*os.File) error { return errors.ErrUnsupported }
