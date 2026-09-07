@@ -222,6 +222,75 @@ func TestServiceResolvesScopeAndLoadsSelectedFilesOnce(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsLoadedDocumentsWithMismatchedProvenance(t *testing.T) {
+	root := t.TempDir()
+	firstPath := filepath.Join(root, ".env.first")
+	secondPath := filepath.Join(root, ".env.second")
+	mustWrite(t, firstPath, "FIRST=value\n")
+	mustWrite(t, secondPath, "SECOND=value\n")
+
+	cases := []struct {
+		name   string
+		mutate func([]sourcedotenv.Document)
+		want   string
+	}{
+		{
+			name: "swapped documents",
+			mutate: func(documents []sourcedotenv.Document) {
+				documents[0], documents[1] = documents[1], documents[0]
+			},
+			want: "source path",
+		},
+		{
+			name: "mismatched source path",
+			mutate: func(documents []sourcedotenv.Document) {
+				documents[0].SourcePath = filepath.Join(root, "unexpected.env")
+			},
+			want: "source path",
+		},
+		{
+			name: "mismatched display path",
+			mutate: func(documents []sourcedotenv.Document) {
+				documents[0].Path = "unexpected.env"
+			},
+			want: "display path",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ruleCalls := 0
+			service := applicationlint.NewWithDependencies(applicationlint.Dependencies{
+				ResolveScope: func(scope.Options) (scope.Selection, error) {
+					return scope.Selection{
+						Root:  root,
+						Paths: []string{firstPath, secondPath},
+					}, nil
+				},
+				LoadDotenv: func(paths, displayPaths []string) ([]sourcedotenv.Document, error) {
+					documents, err := sourcedotenv.LoadMany(paths, displayPaths)
+					if err != nil {
+						return nil, err
+					}
+					tc.mutate(documents)
+					return documents, nil
+				},
+			}, applicationRule{id: "rule", calls: &ruleCalls})
+
+			_, err := service.Run(context.Background(), applicationlint.Options{})
+			if err == nil {
+				t.Fatal("expected provenance validation error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("error = %v, want %q", err, tc.want)
+			}
+			if ruleCalls != 0 {
+				t.Fatalf("rule calls = %d, want 0", ruleCalls)
+			}
+		})
+	}
+}
+
 func TestServiceReturnsLoadingFailureWithoutRunningRules(t *testing.T) {
 	root := t.TempDir()
 	loadErr := errors.New("source load failed")

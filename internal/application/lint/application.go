@@ -120,6 +120,20 @@ func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 			len(documents), len(selection.Paths),
 		)
 	}
+	for i, document := range documents {
+		if document.SourcePath != selection.Paths[i] {
+			return Result{}, fmt.Errorf(
+				"load lint sources: document %d has source path %q, want %q",
+				i, document.SourcePath, selection.Paths[i],
+			)
+		}
+		if document.Path != displayPaths[i] {
+			return Result{}, fmt.Errorf(
+				"load lint sources: document %d has display path %q, want %q",
+				i, document.Path, displayPaths[i],
+			)
+		}
+	}
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
