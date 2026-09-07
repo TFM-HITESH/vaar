@@ -13,6 +13,7 @@ import (
 	"syscall"
 
 	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/fs"
 )
 
 // Document is one selected dotenv source together with the parsed model and
@@ -21,14 +22,20 @@ import (
 // File remains embedded temporarily so source consumers can use the existing
 // parser facts without duplicating the envfile model. SourcePath identifies
 // the on-disk input, while File.Path retains the caller-provided display path.
+// ResolvedPath and Identity capture the target observed during loading so a
+// later mutation can reject a retargeted or replaced source safely.
 type Document struct {
 	envfile.File
-	SourcePath string
-	Mode       os.FileMode
+	SourcePath   string
+	ResolvedPath string
+	Mode         os.FileMode
+	Identity     fs.FileIdentity
 }
 
 // Load validates, reads and parses one selected dotenv file. displayPath is
-// preserved as the parsed document path for diagnostics and reports.
+// preserved as the parsed document path for diagnostics and reports. It also
+// captures the resolved target path and filesystem identity needed by safe
+// mutation planning.
 func Load(path, displayPath string) (Document, error) {
 	// O_NONBLOCK prevents opening a Unix FIFO from blocking before its type can
 	// be checked. Windows ignores this flag because its file handles are already
@@ -53,6 +60,12 @@ func Load(path, displayPath string) (Document, error) {
 		return Document{}, fmt.Errorf("dotenv source %q is not a regular file", path)
 	}
 
+	resolvedPath, err := fs.CanonicalPath(path)
+	if err != nil {
+		_ = file.Close()
+		return Document{}, fmt.Errorf("resolve dotenv source %q: %w", path, err)
+	}
+
 	data, readErr := io.ReadAll(file)
 	closeErr := file.Close()
 	if readErr != nil {
@@ -68,9 +81,11 @@ func Load(path, displayPath string) (Document, error) {
 	}
 
 	return Document{
-		File:       parsed,
-		SourcePath: path,
-		Mode:       info.Mode().Perm(),
+		File:         parsed,
+		SourcePath:   path,
+		ResolvedPath: resolvedPath,
+		Mode:         info.Mode().Perm(),
+		Identity:     fs.NewFileIdentity(info),
 	}, nil
 }
 

@@ -19,12 +19,17 @@ import (
 // Change describes one planned replacement. Original and Replacement are
 // owned by the plan and are never exposed through the plan's backing storage.
 // Mode is the permission state captured when the source document was loaded.
+// The unexported destination and identity fields retain the safe target state
+// required to reject retargeting and duplicate physical destinations.
 type Change struct {
 	SourcePath  string
 	DisplayPath string
 	Original    []byte
 	Replacement []byte
 	Mode        os.FileMode
+
+	destination string
+	identity    fs.FileIdentity
 }
 
 // Plan is an immutable, ordered collection of file replacements. A plan is
@@ -46,6 +51,9 @@ func BuildPlan(documents []sourcedotenv.Document, rules []lint.Rule) (Plan, erro
 		if document.SourcePath == "" {
 			return Plan{}, fmt.Errorf("plan lint fix: document source path is empty")
 		}
+		if document.ResolvedPath == "" || !document.Identity.Valid() {
+			return Plan{}, fmt.Errorf("plan lint fix: document %q has no captured file identity", document.SourcePath)
+		}
 		if _, exists := seen[document.SourcePath]; exists {
 			return Plan{}, fmt.Errorf("plan lint fix: duplicate source path %q", document.SourcePath)
 		}
@@ -63,6 +71,8 @@ func BuildPlan(documents []sourcedotenv.Document, rules []lint.Rule) (Plan, erro
 			Original:    original,
 			Replacement: cloneBytes(replacement),
 			Mode:        document.Mode.Perm(),
+			destination: document.ResolvedPath,
+			identity:    document.Identity,
 		})
 	}
 
@@ -85,46 +95,78 @@ func (p Plan) Changes() []Change {
 	return changes
 }
 
-// Apply resolves source paths through symlinks, validates every planned
-// destination before creating any replacement file, and then acquires the
-// destination writer lock before revalidating each change. The lock is held
-// through temporary-file preparation and a final stale-state validation before
-// atomic replacement. Replacements occur in plan order using same-directory
-// atomic files, with each captured permission mode applied to its temporary
-// file before finalization. It intentionally does not roll back earlier
-// successful replacements if a later replacement fails.
+// Apply resolves and validates every planned destination before creating any
+// replacement file, rejects duplicate physical destinations, and then
+// acquires the destination writer lock before revalidating each change. The
+// lock is held through temporary-file preparation and a final stale-state
+// validation before atomic replacement. Replacements occur in plan order
+// using same-directory atomic files, with each captured permission mode
+// applied to its temporary file before finalization. It intentionally does
+// not roll back earlier successful replacements if a later replacement fails.
 func (p Plan) Apply() error {
-	for _, change := range p.changes {
-		if err := validateChange(change); err != nil {
-			return fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
-		}
+	prepared, err := prepareChanges(p.changes)
+	if err != nil {
+		return err
 	}
 
-	for _, change := range p.changes {
-		destination, err := resolveDestination(change.SourcePath)
-		if err != nil {
-			return fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
-		}
-		if err := validateChangeAt(change, destination); err != nil {
-			return fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
-		}
-		if err := applyChange(change, destination); err != nil {
-			return fmt.Errorf("apply mutation %q: %w", changeLabel(change), err)
+	for _, item := range prepared {
+		if err := applyChange(item.change, item.destination); err != nil {
+			return fmt.Errorf("apply mutation %q: %w", changeLabel(item.change), err)
 		}
 	}
 
 	return nil
 }
 
-func validateChange(change Change) error {
+type preparedChange struct {
+	change      Change
+	destination string
+}
+
+func prepareChanges(changes []Change) ([]preparedChange, error) {
+	prepared := make([]preparedChange, 0, len(changes))
+	for _, change := range changes {
+		item, err := prepareChange(change)
+		if err != nil {
+			return nil, fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
+		}
+		for _, prior := range prepared {
+			if item.destination == prior.destination || item.change.identity.Same(prior.change.identity) {
+				return nil, fmt.Errorf(
+					"validate mutation %q: duplicate destination also selected by %q",
+					changeLabel(change),
+					changeLabel(prior.change),
+				)
+			}
+		}
+		prepared = append(prepared, item)
+	}
+	return prepared, nil
+}
+
+func prepareChange(change Change) (preparedChange, error) {
 	destination, err := resolveDestination(change.SourcePath)
 	if err != nil {
-		return err
+		return preparedChange{}, err
 	}
-	return validateChangeAt(change, destination)
+	if destination != change.destination {
+		return preparedChange{}, fmt.Errorf("source target changed since planning")
+	}
+	if err := validateChangeAt(change, destination); err != nil {
+		return preparedChange{}, err
+	}
+	return preparedChange{change: change, destination: destination}, nil
 }
 
 func validateChangeAt(change Change, destination string) error {
+	matched, err := change.identity.MatchesPath(destination)
+	if err != nil {
+		return fmt.Errorf("check source identity: %w", err)
+	}
+	if !matched {
+		return fmt.Errorf("source file identity changed since planning")
+	}
+
 	current, err := fs.ReadFile(destination)
 	if err != nil {
 		return fmt.Errorf("read destination: %w", err)

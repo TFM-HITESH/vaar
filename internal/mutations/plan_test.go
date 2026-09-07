@@ -333,12 +333,12 @@ func TestApplyRevalidatesEachDestinationBeforeReplacement(t *testing.T) {
 
 	err = plan.Apply()
 	if err == nil {
-		t.Fatal("expected second destination to be rejected after the first replacement")
+		t.Fatal("expected duplicate destination to be rejected during preflight")
 	}
-	if !strings.Contains(err.Error(), ".env.second") {
-		t.Fatalf("error = %v, want affected display path", err)
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("error = %v, want duplicate destination error", err)
 	}
-	assertFileBytes(t, target, []byte("FIRST=changed\n"))
+	assertFileBytes(t, target, original)
 	info, err := os.Lstat(alias)
 	if err != nil {
 		t.Fatalf("lstat alias failed: %v", err)
@@ -347,6 +347,81 @@ func TestApplyRevalidatesEachDestinationBeforeReplacement(t *testing.T) {
 		t.Fatalf("alias mode = %v, want symlink", info.Mode())
 	}
 	assertNoAtomicTemporaryFiles(t, root)
+}
+
+func TestApplyRejectsRetargetedSourceSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file symlink behavior is not portable on Windows")
+	}
+
+	root := t.TempDir()
+	firstTarget := filepath.Join(root, "first.env")
+	secondTarget := filepath.Join(root, "second.env")
+	alias := filepath.Join(root, "alias.env")
+	original := []byte("KEY=value  \n")
+	mustWrite(t, firstTarget, original, 0o644)
+	mustWrite(t, secondTarget, original, 0o644)
+	if err := os.Symlink(firstTarget, alias); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+
+	document := loadDocument(t, alias, ".env")
+	plan, err := mutations.BuildPlan([]sourcedotenv.Document{document}, []lint.Rule{
+		rules.NewTrailingWhitespace(),
+	})
+	if err != nil {
+		t.Fatalf("build plan failed: %v", err)
+	}
+	if err := os.Remove(alias); err != nil {
+		t.Fatalf("remove original alias failed: %v", err)
+	}
+	if err := os.Symlink(secondTarget, alias); err != nil {
+		t.Fatalf("retarget alias failed: %v", err)
+	}
+
+	err = plan.Apply()
+	if err == nil {
+		t.Fatal("expected retargeted source symlink to be rejected")
+	}
+	if !strings.Contains(err.Error(), "identity") && !strings.Contains(err.Error(), "target") {
+		t.Fatalf("error = %v, want source identity or target error", err)
+	}
+	assertFileBytes(t, firstTarget, original)
+	assertFileBytes(t, secondTarget, original)
+}
+
+func TestApplyRejectsDuplicateHardLinkDestinationsBeforeWriting(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("hard-link behavior is not portable on Windows")
+	}
+
+	root := t.TempDir()
+	firstPath := filepath.Join(root, "first.env")
+	secondPath := filepath.Join(root, "second.env")
+	original := []byte("KEY=value  \n")
+	mustWrite(t, firstPath, original, 0o644)
+	if err := os.Link(firstPath, secondPath); err != nil {
+		t.Skipf("hard-link creation is unavailable: %v", err)
+	}
+
+	first := loadDocument(t, firstPath, ".env.first")
+	second := loadDocument(t, secondPath, ".env.second")
+	plan, err := mutations.BuildPlan([]sourcedotenv.Document{first, second}, []lint.Rule{
+		rules.NewTrailingWhitespace(),
+	})
+	if err != nil {
+		t.Fatalf("build plan failed: %v", err)
+	}
+
+	err = plan.Apply()
+	if err == nil {
+		t.Fatal("expected duplicate hard-link destination to be rejected")
+	}
+	if !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("error = %v, want duplicate destination error", err)
+	}
+	assertFileBytes(t, firstPath, original)
+	assertFileBytes(t, secondPath, original)
 }
 
 func TestApplyRejectsStaleDestinationBeforeWritingAnyFile(t *testing.T) {
