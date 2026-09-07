@@ -21,12 +21,18 @@ import (
 
 type applicationRule struct {
 	id       string
+	idCalls  *int
 	calls    *int
 	findings []lintmodel.Finding
 	err      error
 }
 
-func (r applicationRule) ID() string          { return r.id }
+func (r applicationRule) ID() string {
+	if r.idCalls != nil {
+		(*r.idCalls)++
+	}
+	return r.id
+}
 func (r applicationRule) Description() string { return "application test rule" }
 
 func (r applicationRule) Run(lintmodel.Context) ([]lintmodel.Finding, error) {
@@ -108,6 +114,35 @@ func TestServicePreservesOnlyAndSkipRuleSelection(t *testing.T) {
 	}
 	if firstCalls != 1 || secondCalls != 0 {
 		t.Fatalf("rule calls = (%d, %d), want (1, 0)", firstCalls, secondCalls)
+	}
+}
+
+func TestServiceDoesNotReselectRulesDuringExecution(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	mustWrite(t, path, "KEY=value\n")
+
+	idCalls := 0
+	callsAtLoad := -1
+	service := applicationlint.NewWithDependencies(applicationlint.Dependencies{
+		LoadDotenv: func(paths, displayPaths []string) ([]sourcedotenv.Document, error) {
+			callsAtLoad = idCalls
+			return sourcedotenv.LoadMany(paths, displayPaths)
+		},
+	}, applicationRule{id: "rule", idCalls: &idCalls})
+
+	result, err := service.Run(context.Background(), applicationlint.Options{Root: root})
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if callsAtLoad < 0 {
+		t.Fatal("loader did not observe rule selection")
+	}
+	if idCalls != callsAtLoad {
+		t.Fatalf("rule ID calls after loading = %d, want %d", idCalls, callsAtLoad)
+	}
+	if len(result.SelectedRules) != 1 {
+		t.Fatalf("selected rules = %#v, want one rule", result.SelectedRules)
 	}
 }
 

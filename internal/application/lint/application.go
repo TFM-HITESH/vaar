@@ -82,13 +82,14 @@ func NewWithDependencies(dependencies Dependencies, rules ...lintengine.Rule) *S
 // once, converts the loaded documents into one analysis snapshot, and runs the
 // selected lint rules. It performs no writes, rendering or exit-code mapping.
 func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
-	selected, err := s.engine.SelectRules(lintengine.EngineOptions{
+	plan, err := s.engine.SelectRulePlan(lintengine.EngineOptions{
 		OnlyRules: opts.OnlyRules,
 		SkipRules: opts.SkipRules,
 	})
 	if err != nil {
 		return Result{}, err
 	}
+	selected := plan.Rules()
 	if err := ctx.Err(); err != nil {
 		return Result{}, err
 	}
@@ -147,10 +148,7 @@ func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 	}
 
 	snapshot := analysis.NewSnapshot(analysisdotenv.FromDocuments(inputs))
-	findings, err := s.engine.Run(ctx, snapshot, lintengine.EngineOptions{
-		OnlyRules: opts.OnlyRules,
-		SkipRules: opts.SkipRules,
-	})
+	findings, err := s.engine.RunPlan(ctx, snapshot, plan)
 	if err != nil {
 		return Result{}, fmt.Errorf("run lint engine: %w", err)
 	}

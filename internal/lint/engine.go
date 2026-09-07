@@ -24,6 +24,14 @@ type EngineOptions struct {
 	SkipRules []string
 }
 
+// RulePlan is an engine-owned, immutable selection of rules for one run.
+// Plans can only be created by an Engine and can only be executed by the
+// Engine that created them.
+type RulePlan struct {
+	engine *Engine
+	rules  []Rule
+}
+
 // Engine executes lint rules against an immutable analysis snapshot.
 type Engine struct {
 	rules []Rule
@@ -37,25 +45,59 @@ func NewEngine(rules ...Rule) *Engine {
 	return &Engine{rules: copied}
 }
 
+// SelectRulePlan validates and resolves rule-selection input against the
+// engine's registered rules. The returned plan is owned by this engine and can
+// be executed without repeating selection.
+func (e *Engine) SelectRulePlan(opts EngineOptions) (RulePlan, error) {
+	selected, err := selectRules(e.rules, opts.OnlyRules, opts.SkipRules)
+	if err != nil {
+		return RulePlan{}, err
+	}
+
+	return RulePlan{engine: e, rules: selected}, nil
+}
+
+// Rules returns a copy of the plan's selected rules. The returned slice can be
+// changed by the caller without changing the plan.
+func (p RulePlan) Rules() []Rule {
+	selected := make([]Rule, len(p.rules))
+	copy(selected, p.rules)
+	return selected
+}
+
 // SelectRules validates and resolves rule-selection input against the engine's
 // registered rules. The returned slice is independent of the engine's rule
 // collection and is useful to compatibility adapters that need the selected
 // rules for fix planning or other orchestration concerns.
 func (e *Engine) SelectRules(opts EngineOptions) ([]Rule, error) {
-	return selectRules(e.rules, opts.OnlyRules, opts.SkipRules)
+	plan, err := e.SelectRulePlan(opts)
+	if err != nil {
+		return nil, err
+	}
+	return plan.Rules(), nil
 }
 
 // Run selects and executes rules against snapshot. It performs no filesystem
 // I/O, parsing, mutation, rendering or exit-code mapping.
 func (e *Engine) Run(ctx context.Context, snapshot analysis.Snapshot, opts EngineOptions) ([]Finding, error) {
-	selected, err := e.SelectRules(opts)
+	plan, err := e.SelectRulePlan(opts)
 	if err != nil {
 		return nil, err
 	}
 
+	return e.RunPlan(ctx, snapshot, plan)
+}
+
+// RunPlan executes the rules selected by this engine against snapshot. It
+// checks cancellation before every rule and never performs rule selection.
+func (e *Engine) RunPlan(ctx context.Context, snapshot analysis.Snapshot, plan RulePlan) ([]Finding, error) {
+	if plan.engine != e {
+		return nil, fmt.Errorf("lint rule plan does not belong to engine")
+	}
+
 	findings := make([]Finding, 0, 16)
 	ruleContext := Context{Snapshot: snapshot}
-	for _, rule := range selected {
+	for _, rule := range plan.rules {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}

@@ -19,6 +19,7 @@ import (
 
 type engineTestRule struct {
 	id       string
+	idCalls  *int
 	calls    *int
 	observed *[]string
 	onRun    func()
@@ -26,7 +27,12 @@ type engineTestRule struct {
 	err      error
 }
 
-func (r engineTestRule) ID() string          { return r.id }
+func (r engineTestRule) ID() string {
+	if r.idCalls != nil {
+		(*r.idCalls)++
+	}
+	return r.id
+}
 func (r engineTestRule) Description() string { return "engine test rule" }
 
 func (r engineTestRule) Run(ctx lint.Context) ([]lint.Finding, error) {
@@ -268,6 +274,67 @@ func TestEngineExposesSelectedRulesForCompatibilityAdapters(t *testing.T) {
 	}
 	if selected[0].ID() != "second" {
 		t.Fatalf("selected rule = %q, want second", selected[0].ID())
+	}
+}
+
+func TestEngineRunsRulePlanWithoutReselectingRules(t *testing.T) {
+	idCalls := 0
+	rule := engineTestRule{id: "planned", idCalls: &idCalls}
+	engine := lint.NewEngine(rule)
+
+	plan, err := engine.SelectRulePlan(lint.EngineOptions{})
+	if err != nil {
+		t.Fatalf("select rule plan failed: %v", err)
+	}
+	selectedCalls := idCalls
+
+	findings, err := engine.RunPlan(context.Background(), emptyAnalysisSnapshot(), plan)
+	if err != nil {
+		t.Fatalf("run rule plan failed: %v", err)
+	}
+	if findings == nil {
+		t.Fatal("clean rule-plan run returned nil findings")
+	}
+	if idCalls != selectedCalls {
+		t.Fatalf("rule ID calls during execution = %d, want %d", idCalls, selectedCalls)
+	}
+
+	selected := plan.Rules()
+	if len(selected) != 1 || selected[0].ID() != "planned" {
+		t.Fatalf("rule plan contents = %#v, want planned rule", selected)
+	}
+}
+
+func TestEngineRunPlanStopsBeforeFirstRuleWhenCanceled(t *testing.T) {
+	ruleCalls := 0
+	engine := lint.NewEngine(engineTestRule{id: "planned", calls: &ruleCalls})
+	plan, err := engine.SelectRulePlan(lint.EngineOptions{})
+	if err != nil {
+		t.Fatalf("select rule plan failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err = engine.RunPlan(ctx, emptyAnalysisSnapshot(), plan)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("error = %v, want context.Canceled", err)
+	}
+	if ruleCalls != 0 {
+		t.Fatalf("rule calls = %d, want 0", ruleCalls)
+	}
+}
+
+func TestEngineRejectsRulePlanFromAnotherEngine(t *testing.T) {
+	first := lint.NewEngine(engineTestRule{id: "first"})
+	second := lint.NewEngine(engineTestRule{id: "second"})
+	plan, err := first.SelectRulePlan(lint.EngineOptions{})
+	if err != nil {
+		t.Fatalf("select rule plan failed: %v", err)
+	}
+
+	_, err = second.RunPlan(context.Background(), emptyAnalysisSnapshot(), plan)
+	if err == nil || !strings.Contains(err.Error(), "does not belong to engine") {
+		t.Fatalf("error = %v, want plan ownership error", err)
 	}
 }
 
