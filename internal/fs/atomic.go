@@ -94,6 +94,21 @@ func (f *AtomicFile) Write(data []byte) (int, error) {
 	return written, nil
 }
 
+// Chmod applies permission bits to the temporary replacement file. The
+// destination is unchanged until Finalize succeeds, so callers can preserve
+// an existing destination mode as part of an atomic replacement.
+func (f *AtomicFile) Chmod(mode os.FileMode) error {
+	if f == nil || f.file == nil {
+		return ErrAtomicFileClosed
+	}
+
+	if err := f.file.Chmod(mode.Perm()); err != nil {
+		_ = f.Cleanup()
+		return err
+	}
+	return nil
+}
+
 // Finalize closes the temporary file and atomically replaces the destination.
 // It cleans up the temporary file if closing or replacement fails.
 func (f *AtomicFile) Finalize() error {
