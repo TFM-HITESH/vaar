@@ -6,6 +6,7 @@ SPDX-License-Identifier: Apache-2.0
 package fs_test
 
 import (
+	"bytes"
 	"errors"
 	"os"
 	"path/filepath"
@@ -61,6 +62,29 @@ func TestAtomicFileReplacesExistingFile(t *testing.T) {
 
 	assertFileBytes(t, destination, payload)
 	assertNoAtomicTemporaryFiles(t, root)
+}
+
+func TestAtomicFileReadsExistingDestinationThroughLock(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "lint.json")
+	payload := []byte("current")
+	if err := os.WriteFile(destination, payload, 0o644); err != nil {
+		t.Fatalf("write destination failed: %v", err)
+	}
+
+	file, err := fs.NewAtomicFile(destination)
+	if err != nil {
+		t.Fatalf("create atomic file failed: %v", err)
+	}
+	defer func() { _ = file.Cleanup() }()
+
+	got, err := file.ReadDestination()
+	if err != nil {
+		t.Fatalf("read locked destination failed: %v", err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("locked destination = %q, want %q", got, payload)
+	}
 }
 
 func TestAtomicFileDoesNotReplaceDirectory(t *testing.T) {

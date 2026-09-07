@@ -14,6 +14,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/envaar/vaar/internal/fs"
 	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
@@ -85,6 +86,42 @@ func TestLoadPreservesFileMode(t *testing.T) {
 
 	if got, want := document.Mode, info.Mode().Perm(); got != want {
 		t.Fatalf("unexpected mode: got %04o want %04o", got, want)
+	}
+}
+
+func TestLoadCapturesResolvedTargetAndIdentity(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file symlink behavior is not portable on Windows")
+	}
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target.env")
+	alias := filepath.Join(root, "alias.env")
+	mustWrite(t, target, []byte("KEY=value\n"))
+	if err := os.Symlink(target, alias); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+
+	document, err := dotenv.Load(alias, ".env")
+	if err != nil {
+		t.Fatalf("load failed: %v", err)
+	}
+	want, err := fs.CanonicalPath(target)
+	if err != nil {
+		t.Fatalf("canonicalize target failed: %v", err)
+	}
+	if got := document.ResolvedPath; got != want {
+		t.Fatalf("resolved path = %q, want %q", got, want)
+	}
+	if !document.Identity.Valid() {
+		t.Fatal("loaded document has no file identity")
+	}
+	matched, err := document.Identity.MatchesPath(target)
+	if err != nil {
+		t.Fatalf("match target identity failed: %v", err)
+	}
+	if !matched {
+		t.Fatal("loaded identity does not match resolved target")
 	}
 }
 

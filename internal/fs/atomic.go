@@ -18,12 +18,16 @@ import (
 // finalized or cleaned up.
 var ErrAtomicFileClosed = errors.New("atomic file is closed")
 
-// AtomicFile owns a same-directory temporary file until it is finalized or
-// cleaned up. The destination is replaced only after all writes succeed.
+// AtomicFile owns a same-directory temporary file and destination writer lock
+// until it is finalized or cleaned up. The destination is replaced only after
+// all writes succeed. The lock coordinates Vaar writers that use AtomicFile or
+// WriteFile; an external process that ignores the advisory lock contract is
+// outside the stale-state guarantee.
 type AtomicFile struct {
 	destination string
 	temporary   string
 	file        *os.File
+	lock        *pathLock
 	finalized   bool
 }
 
@@ -63,15 +67,24 @@ func NewAtomicFile(destination string) (*AtomicFile, error) {
 		return nil, err
 	}
 
-	temporary, err := os.CreateTemp(TempDirForPath(destination), "vaar-atomic-*")
+	lock, err := acquirePathLock(destination)
 	if err != nil {
 		return nil, err
+	}
+	if err := ValidateFileDestination(destination); err != nil {
+		return nil, errors.Join(err, lock.release())
+	}
+
+	temporary, err := os.CreateTemp(TempDirForPath(destination), "vaar-atomic-*")
+	if err != nil {
+		return nil, errors.Join(err, lock.release())
 	}
 
 	return &AtomicFile{
 		destination: destination,
 		temporary:   temporary.Name(),
 		file:        temporary,
+		lock:        lock,
 	}, nil
 }
 
@@ -84,14 +97,45 @@ func (f *AtomicFile) Write(data []byte) (int, error) {
 
 	written, err := f.file.Write(data)
 	if err != nil {
-		_ = f.Cleanup()
-		return written, err
+		return written, errors.Join(err, f.Cleanup())
 	}
 	if written != len(data) {
-		_ = f.Cleanup()
-		return written, io.ErrShortWrite
+		return written, errors.Join(io.ErrShortWrite, f.Cleanup())
 	}
 	return written, nil
+}
+
+// Chmod applies permission bits to the temporary replacement file. The
+// destination is unchanged until Finalize succeeds, so callers can preserve
+// an existing destination mode as part of an atomic replacement.
+func (f *AtomicFile) Chmod(mode os.FileMode) error {
+	if f == nil || f.file == nil {
+		return ErrAtomicFileClosed
+	}
+
+	if err := f.file.Chmod(mode.Perm()); err != nil {
+		return errors.Join(err, f.Cleanup())
+	}
+	return nil
+}
+
+// ReadDestination reads the currently locked destination. When the platform
+// uses a destination byte-range lock, the read is performed through the same
+// handle that owns that lock so Windows does not reject a second handle's
+// access to the locked range. If the destination has no target handle yet,
+// such as a missing file or an identity-lock fallback, it reads by pathname.
+func (f *AtomicFile) ReadDestination() ([]byte, error) {
+	if f == nil || f.lock == nil || f.temporary == "" {
+		return nil, ErrAtomicFileClosed
+	}
+
+	if f.lock.targetFile == nil {
+		return ReadFile(f.destination)
+	}
+	if _, err := f.lock.targetFile.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(f.lock.targetFile)
 }
 
 // Finalize closes the temporary file and atomically replaces the destination.
@@ -111,19 +155,17 @@ func (f *AtomicFile) Finalize() error {
 		err := f.file.Close()
 		f.file = nil
 		if err != nil {
-			_ = f.Cleanup()
-			return err
+			return errors.Join(err, f.Cleanup())
 		}
 	}
 
 	if err := replaceFile(f.temporary, f.destination); err != nil {
-		_ = f.Cleanup()
-		return err
+		return errors.Join(err, f.Cleanup())
 	}
 
 	f.temporary = ""
 	f.finalized = true
-	return nil
+	return f.Cleanup()
 }
 
 // Cleanup closes any open temporary file and removes an uncommitted temporary
@@ -139,15 +181,20 @@ func (f *AtomicFile) Cleanup() error {
 		f.file = nil
 	}
 
-	if f.temporary == "" {
-		return closeErr
+	var removeErr error
+	if f.temporary != "" {
+		removeErr = os.Remove(f.temporary)
+		if removeErr == nil || os.IsNotExist(removeErr) {
+			f.temporary = ""
+		}
 	}
 
-	removeErr := os.Remove(f.temporary)
-	if removeErr == nil || os.IsNotExist(removeErr) {
-		f.temporary = ""
+	var unlockErr error
+	if f.lock != nil {
+		unlockErr = f.lock.release()
+		f.lock = nil
 	}
-	return errors.Join(closeErr, removeErr)
+	return errors.Join(closeErr, removeErr, unlockErr)
 }
 
 func replaceFile(temporary, destination string) error {

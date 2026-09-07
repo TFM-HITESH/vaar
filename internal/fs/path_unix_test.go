@@ -1,4 +1,4 @@
-//go:build unix
+//go:build unix && !aix && !illumos && !solaris
 
 /*
 Copyright © 2026 envaar

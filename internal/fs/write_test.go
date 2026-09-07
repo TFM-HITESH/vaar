@@ -77,3 +77,29 @@ func TestWriteFileUsesDefaultModeForNewFiles(t *testing.T) {
 		t.Fatalf("created file contents differ: got %q want %q", got, want)
 	}
 }
+
+func TestWriteFileUpdatesHardLinkTarget(t *testing.T) {
+	root := t.TempDir()
+	destination := filepath.Join(root, "destination.env")
+	alias := filepath.Join(root, "alias.env")
+	if err := os.WriteFile(destination, []byte("old"), 0o644); err != nil {
+		t.Fatalf("write initial file failed: %v", err)
+	}
+	if err := os.Link(destination, alias); err != nil {
+		t.Skipf("hard-link creation is unavailable: %v", err)
+	}
+
+	if err := fs.WriteFile(alias, []byte("new")); err != nil {
+		t.Fatalf("write hard-link alias failed: %v", err)
+	}
+
+	for _, path := range []string{destination, alias} {
+		contents, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %q failed: %v", path, err)
+		}
+		if got, want := string(contents), "new"; got != want {
+			t.Fatalf("contents in %q = %q, want %q", path, got, want)
+		}
+	}
+}
