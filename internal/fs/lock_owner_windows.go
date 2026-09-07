@@ -169,7 +169,7 @@ func verifyLockDirectoryDACL(descriptor []byte, userSID *syscall.SID) error {
 		return err
 	}
 	for index := uint32(0); index < size.aceCount; index++ {
-		var ace uintptr
+		var ace *byte
 		r1, _, err = getACEProc.Call(
 			dacl,
 			uintptr(index),
@@ -178,11 +178,11 @@ func verifyLockDirectoryDACL(descriptor []byte, userSID *syscall.SID) error {
 		if r1 == 0 {
 			return err
 		}
-		if ace == 0 {
+		if ace == nil {
 			return fmt.Errorf("lock directory DACL contains a nil ACE")
 		}
 
-		aceType := *(*byte)(unsafe.Pointer(ace))
+		aceType := *ace
 		switch aceType {
 		case accessDeniedACEType, accessDeniedCallbackACEType, accessDeniedObjectACEType, accessDeniedCallbackObjectACEType:
 			continue
@@ -190,11 +190,11 @@ func verifyLockDirectoryDACL(descriptor []byte, userSID *syscall.SID) error {
 		default:
 			return fmt.Errorf("lock directory DACL contains unsupported ACE type %d", aceType)
 		}
-		mask := *(*uint32)(unsafe.Pointer(ace + 4))
+		mask := *(*uint32)(unsafe.Add(unsafe.Pointer(ace), 4))
 		if mask&lockDirectoryWriteMask == 0 {
 			continue
 		}
-		aceSID := (*syscall.SID)(unsafe.Pointer(ace + 8))
+		aceSID := (*syscall.SID)(unsafe.Add(unsafe.Pointer(ace), 8))
 		if !sidMatchesAny(aceSID, allowedSIDs) {
 			return fmt.Errorf("lock directory DACL grants write access to an unauthorized principal")
 		}
