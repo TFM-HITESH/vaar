@@ -117,6 +117,25 @@ func (f *AtomicFile) Chmod(mode os.FileMode) error {
 	return nil
 }
 
+// ReadDestination reads the currently locked destination. When the platform
+// uses a destination byte-range lock, the read is performed through the same
+// handle that owns that lock so Windows does not reject a second handle's
+// access to the locked range. If the destination has no target handle yet,
+// such as a missing file or an identity-lock fallback, it reads by pathname.
+func (f *AtomicFile) ReadDestination() ([]byte, error) {
+	if f == nil || f.lock == nil || f.temporary == "" {
+		return nil, ErrAtomicFileClosed
+	}
+
+	if f.lock.targetFile == nil {
+		return ReadFile(f.destination)
+	}
+	if _, err := f.lock.targetFile.Seek(0, io.SeekStart); err != nil {
+		return nil, err
+	}
+	return io.ReadAll(f.lock.targetFile)
+}
+
 // Finalize closes the temporary file and atomically replaces the destination.
 // It cleans up the temporary file if closing or replacement fails.
 func (f *AtomicFile) Finalize() error {

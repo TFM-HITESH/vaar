@@ -152,13 +152,13 @@ func prepareChange(change Change) (preparedChange, error) {
 	if destination != change.destination {
 		return preparedChange{}, fmt.Errorf("source target changed since planning")
 	}
-	if err := validateChangeAt(change, destination); err != nil {
+	if err := validateChangeAt(change, destination, nil); err != nil {
 		return preparedChange{}, err
 	}
 	return preparedChange{change: change, destination: destination}, nil
 }
 
-func validateChangeAt(change Change, destination string) error {
+func validateChangeAt(change Change, destination string, atomicFile *fs.AtomicFile) error {
 	matched, err := change.identity.MatchesPath(destination)
 	if err != nil {
 		return fmt.Errorf("check source identity: %w", err)
@@ -167,7 +167,7 @@ func validateChangeAt(change Change, destination string) error {
 		return fmt.Errorf("source file identity changed since planning")
 	}
 
-	current, err := fs.ReadFile(destination)
+	current, err := readDestination(destination, atomicFile)
 	if err != nil {
 		return fmt.Errorf("read destination: %w", err)
 	}
@@ -204,7 +204,7 @@ func applyChange(change Change, destination string) (err error) {
 		}
 	}()
 
-	if err := validateChangeAt(change, destination); err != nil {
+	if err := validateChangeAt(change, destination, file); err != nil {
 		return fmt.Errorf("revalidate destination: %w", err)
 	}
 	if _, err := file.Write(change.Replacement); err != nil {
@@ -213,13 +213,20 @@ func applyChange(change Change, destination string) (err error) {
 	if err := file.Chmod(change.Mode); err != nil {
 		return fmt.Errorf("preserve permissions: %w", err)
 	}
-	if err := validateChangeAt(change, destination); err != nil {
+	if err := validateChangeAt(change, destination, file); err != nil {
 		return fmt.Errorf("revalidate before finalization: %w", err)
 	}
 	if err := file.Finalize(); err != nil {
 		return fmt.Errorf("finalize replacement: %w", err)
 	}
 	return nil
+}
+
+func readDestination(destination string, atomicFile *fs.AtomicFile) ([]byte, error) {
+	if atomicFile != nil {
+		return atomicFile.ReadDestination()
+	}
+	return fs.ReadFile(destination)
 }
 
 func changeLabel(change Change) string {
