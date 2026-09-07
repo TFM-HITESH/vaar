@@ -7,6 +7,7 @@ package mutations
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 
@@ -84,11 +85,12 @@ func (p Plan) Changes() []Change {
 	return changes
 }
 
-// Apply validates every planned destination before creating any replacement
-// file. It then replaces changed files in plan order using same-directory
-// atomic files, applying each captured permission mode to its temporary file
-// before finalization. It intentionally does not roll back earlier successful
-// replacements if a later replacement fails.
+// Apply resolves source paths through symlinks, validates every planned
+// destination before creating any replacement file, and then revalidates each
+// destination immediately before replacing it. Replacements occur in plan
+// order using same-directory atomic files, with each captured permission mode
+// applied to its temporary file before finalization. It intentionally does not
+// roll back earlier successful replacements if a later replacement fails.
 func (p Plan) Apply() error {
 	for _, change := range p.changes {
 		if err := validateChange(change); err != nil {
@@ -97,7 +99,14 @@ func (p Plan) Apply() error {
 	}
 
 	for _, change := range p.changes {
-		if err := applyChange(change); err != nil {
+		destination, err := resolveDestination(change.SourcePath)
+		if err != nil {
+			return fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
+		}
+		if err := validateChangeAt(change, destination); err != nil {
+			return fmt.Errorf("validate mutation %q: %w", changeLabel(change), err)
+		}
+		if err := applyChange(change, destination); err != nil {
 			return fmt.Errorf("apply mutation %q: %w", changeLabel(change), err)
 		}
 	}
@@ -106,7 +115,15 @@ func (p Plan) Apply() error {
 }
 
 func validateChange(change Change) error {
-	current, err := fs.ReadFile(change.SourcePath)
+	destination, err := resolveDestination(change.SourcePath)
+	if err != nil {
+		return err
+	}
+	return validateChangeAt(change, destination)
+}
+
+func validateChangeAt(change Change, destination string) error {
+	current, err := fs.ReadFile(destination)
 	if err != nil {
 		return fmt.Errorf("read destination: %w", err)
 	}
@@ -114,7 +131,7 @@ func validateChange(change Change) error {
 		return fmt.Errorf("destination changed since planning")
 	}
 
-	info, err := os.Stat(change.SourcePath)
+	info, err := os.Stat(destination)
 	if err != nil {
 		return fmt.Errorf("stat destination: %w", err)
 	}
@@ -124,12 +141,24 @@ func validateChange(change Change) error {
 	return nil
 }
 
-func applyChange(change Change) error {
-	file, err := fs.NewAtomicFile(change.SourcePath)
+func resolveDestination(sourcePath string) (string, error) {
+	destination, err := fs.CanonicalPath(sourcePath)
+	if err != nil {
+		return "", fmt.Errorf("resolve destination: %w", err)
+	}
+	return destination, nil
+}
+
+func applyChange(change Change, destination string) (err error) {
+	file, err := fs.NewAtomicFile(destination)
 	if err != nil {
 		return fmt.Errorf("create atomic replacement: %w", err)
 	}
-	defer func() { _ = file.Cleanup() }()
+	defer func() {
+		if cleanupErr := file.Cleanup(); cleanupErr != nil {
+			err = errors.Join(err, fmt.Errorf("cleanup temporary replacement: %w", cleanupErr))
+		}
+	}()
 
 	if _, err := file.Write(change.Replacement); err != nil {
 		return fmt.Errorf("write replacement: %w", err)

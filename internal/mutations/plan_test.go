@@ -39,6 +39,23 @@ func (markerStripRule) Fix(data []byte) []byte {
 	return bytes.ReplaceAll(data, []byte("X"), []byte("lf"))
 }
 
+type sequencedFixRule struct {
+	calls int
+}
+
+func (r *sequencedFixRule) ID() string          { return "sequenced-fix" }
+func (r *sequencedFixRule) Description() string { return "test-only sequenced replacement" }
+func (r *sequencedFixRule) Run(lint.Context) ([]lint.Finding, error) {
+	return nil, nil
+}
+func (r *sequencedFixRule) Fix([]byte) []byte {
+	r.calls++
+	if r.calls == 1 {
+		return []byte("FIRST=changed\n")
+	}
+	return []byte("SECOND=changed\n")
+}
+
 func TestBuildPlanEmpty(t *testing.T) {
 	plan, err := mutations.BuildPlan(nil, nil)
 	if err != nil {
@@ -244,6 +261,92 @@ func TestApplyPreservesCRLFForScopedFix(t *testing.T) {
 		t.Fatalf("apply plan failed: %v", err)
 	}
 	assertFileBytes(t, path, []byte("KEY=value\r\nNEXT=1\r\n"))
+}
+
+func TestApplyPreservesFileSymlink(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file symlink behavior is not portable on Windows")
+	}
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target.env")
+	alias := filepath.Join(root, "alias.env")
+	mustWrite(t, target, []byte("KEY=value  \n"), 0o640)
+	if err := os.Symlink(target, alias); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+
+	document := loadDocument(t, alias, ".env")
+	plan, err := mutations.BuildPlan([]sourcedotenv.Document{document}, []lint.Rule{
+		rules.NewTrailingWhitespace(),
+	})
+	if err != nil {
+		t.Fatalf("build plan failed: %v", err)
+	}
+	if err := plan.Apply(); err != nil {
+		t.Fatalf("apply plan failed: %v", err)
+	}
+
+	info, err := os.Lstat(alias)
+	if err != nil {
+		t.Fatalf("lstat alias failed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("alias mode = %v, want symlink", info.Mode())
+	}
+	linkedTarget, err := os.Readlink(alias)
+	if err != nil {
+		t.Fatalf("read alias target failed: %v", err)
+	}
+	if linkedTarget != target {
+		t.Fatalf("alias target = %q, want %q", linkedTarget, target)
+	}
+	assertFileBytes(t, target, []byte("KEY=value\n"))
+	assertNoAtomicTemporaryFiles(t, root)
+}
+
+func TestApplyRevalidatesEachDestinationBeforeReplacement(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("file symlink behavior is not portable on Windows")
+	}
+
+	root := t.TempDir()
+	target := filepath.Join(root, "target.env")
+	alias := filepath.Join(root, "alias.env")
+	original := []byte("KEY=value  \n")
+	mustWrite(t, target, original, 0o644)
+	if err := os.Symlink(target, alias); err != nil {
+		t.Skipf("symlink creation is unavailable: %v", err)
+	}
+
+	first := loadDocument(t, target, ".env.first")
+	second := loadDocument(t, alias, ".env.second")
+	plan, err := mutations.BuildPlan([]sourcedotenv.Document{first, second}, []lint.Rule{
+		&sequencedFixRule{},
+	})
+	if err != nil {
+		t.Fatalf("build plan failed: %v", err)
+	}
+	if changes := plan.Changes(); len(changes) != 2 {
+		t.Fatalf("planned changes = %d, want 2", len(changes))
+	}
+
+	err = plan.Apply()
+	if err == nil {
+		t.Fatal("expected second destination to be rejected after the first replacement")
+	}
+	if !strings.Contains(err.Error(), ".env.second") {
+		t.Fatalf("error = %v, want affected display path", err)
+	}
+	assertFileBytes(t, target, []byte("FIRST=changed\n"))
+	info, err := os.Lstat(alias)
+	if err != nil {
+		t.Fatalf("lstat alias failed: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("alias mode = %v, want symlink", info.Mode())
+	}
+	assertNoAtomicTemporaryFiles(t, root)
 }
 
 func TestApplyRejectsStaleDestinationBeforeWritingAnyFile(t *testing.T) {

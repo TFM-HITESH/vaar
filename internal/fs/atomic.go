@@ -84,12 +84,10 @@ func (f *AtomicFile) Write(data []byte) (int, error) {
 
 	written, err := f.file.Write(data)
 	if err != nil {
-		_ = f.Cleanup()
-		return written, err
+		return written, errors.Join(err, f.Cleanup())
 	}
 	if written != len(data) {
-		_ = f.Cleanup()
-		return written, io.ErrShortWrite
+		return written, errors.Join(io.ErrShortWrite, f.Cleanup())
 	}
 	return written, nil
 }
@@ -103,8 +101,7 @@ func (f *AtomicFile) Chmod(mode os.FileMode) error {
 	}
 
 	if err := f.file.Chmod(mode.Perm()); err != nil {
-		_ = f.Cleanup()
-		return err
+		return errors.Join(err, f.Cleanup())
 	}
 	return nil
 }
@@ -126,14 +123,12 @@ func (f *AtomicFile) Finalize() error {
 		err := f.file.Close()
 		f.file = nil
 		if err != nil {
-			_ = f.Cleanup()
-			return err
+			return errors.Join(err, f.Cleanup())
 		}
 	}
 
 	if err := replaceFile(f.temporary, f.destination); err != nil {
-		_ = f.Cleanup()
-		return err
+		return errors.Join(err, f.Cleanup())
 	}
 
 	f.temporary = ""
