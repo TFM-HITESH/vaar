@@ -20,7 +20,9 @@ var ErrAtomicFileClosed = errors.New("atomic file is closed")
 
 // AtomicFile owns a same-directory temporary file and destination writer lock
 // until it is finalized or cleaned up. The destination is replaced only after
-// all writes succeed.
+// all writes succeed. The lock coordinates Vaar writers that use AtomicFile or
+// WriteFile; an external process that ignores the advisory lock contract is
+// outside the stale-state guarantee.
 type AtomicFile struct {
 	destination string
 	temporary   string

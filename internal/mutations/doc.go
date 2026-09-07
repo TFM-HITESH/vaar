@@ -9,7 +9,9 @@ SPDX-License-Identifier: Apache-2.0
 // validates every planned original state before replacing any destination,
 // coordinates destination writers through the shared filesystem lock, preserves
 // captured permission bits through atomic replacement, and cleans temporary
-// files.
+// files. Its stale-state guarantee applies to Vaar-cooperating writers that
+// use the shared filesystem primitives; an independent process that ignores
+// advisory locks is outside this internal API's coordination boundary.
 //
 // Mutation state may contain source bytes because it belongs to the mutation
 // boundary, not the value-free analysis boundary. This package does not own

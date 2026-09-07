@@ -36,6 +36,43 @@ func TestEnsurePrivateLockDirCreatesRestrictiveDirectory(t *testing.T) {
 	}
 }
 
+func TestEnsurePrivateLockDirNormalizesRestrictivePermissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not portable on Windows")
+	}
+
+	path := filepath.Join(t.TempDir(), "vaar-locks")
+	if err := os.Mkdir(path, 0o700); err != nil {
+		t.Fatalf("create lock directory failed: %v", err)
+	}
+	if err := os.Chmod(path, 0); err != nil {
+		t.Fatalf("make lock directory restrictive failed: %v", err)
+	}
+
+	if err := ensurePrivateLockDir(path); err != nil {
+		t.Fatalf("ensure private lock directory failed: %v", err)
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		t.Fatalf("stat lock directory failed: %v", err)
+	}
+	if got, want := info.Mode().Perm(), os.FileMode(0o700); got != want {
+		t.Fatalf("lock directory permissions = %o, want %o", got, want)
+	}
+}
+
+func TestPathLockDirectoryHasEnvironmentIndependentFallback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("environment fallback differs on Windows")
+	}
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CACHE_HOME", "")
+
+	if _, err := pathLockDirectory(); err != nil {
+		t.Fatalf("path lock directory failed without home environment: %v", err)
+	}
+}
+
 func TestEnsurePrivateLockDirRejectsPreexistingSymlink(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "vaar-locks")

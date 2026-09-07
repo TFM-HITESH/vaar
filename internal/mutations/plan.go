@@ -103,6 +103,9 @@ func (p Plan) Changes() []Change {
 // using same-directory atomic files, with each captured permission mode
 // applied to its temporary file before finalization. It intentionally does
 // not roll back earlier successful replacements if a later replacement fails.
+// The stale-state guarantee covers Vaar-cooperating writers; independent
+// processes that ignore the shared advisory lock are outside this API's
+// coordination boundary.
 func (p Plan) Apply() error {
 	prepared, err := prepareChanges(p.changes)
 	if err != nil {

@@ -65,15 +65,18 @@ func acquirePathLock(path string) (*pathLock, error) {
 }
 
 func pathLockDirectory() (string, error) {
-	ownerPath, err := os.UserCacheDir()
+	ownerKey, err := os.UserCacheDir()
 	if err != nil {
-		ownerPath, err = os.UserHomeDir()
+		ownerKey, err = os.UserHomeDir()
 		if err != nil {
-			return "", fmt.Errorf("resolve per-user lock namespace: %w", err)
+			ownerKey, err = fallbackLockNamespace()
+			if err != nil {
+				return "", fmt.Errorf("resolve per-user lock namespace: %w", err)
+			}
 		}
 	}
 
-	digest := sha256.Sum256([]byte(filepath.Clean(ownerPath)))
+	digest := sha256.Sum256([]byte(filepath.Clean(ownerKey)))
 	return filepath.Join(os.TempDir(), pathLockDirectoryPrefix+hex.EncodeToString(digest[:])), nil
 }
 
@@ -103,7 +106,7 @@ func ensurePrivateLockDir(path string) error {
 	// Windows does not expose POSIX permission bits through os.FileMode. On
 	// Unix-like systems, remove group/world access even when a directory from a
 	// previous process already exists.
-	if runtime.GOOS != "windows" && info.Mode().Perm()&0o077 != 0 {
+	if runtime.GOOS != "windows" && info.Mode().Perm() != 0o700 {
 		if err := os.Chmod(path, 0o700); err != nil {
 			return err
 		}
@@ -114,7 +117,7 @@ func ensurePrivateLockDir(path string) error {
 		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 			return fmt.Errorf("lock directory changed while securing it")
 		}
-		if info.Mode().Perm()&0o077 != 0 {
+		if info.Mode().Perm() != 0o700 {
 			return fmt.Errorf("lock directory is not private")
 		}
 		owned, err := lockDirectoryOwnedByCurrentUser(path, info)

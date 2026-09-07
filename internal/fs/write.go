@@ -14,9 +14,12 @@ import (
 const defaultFileMode os.FileMode = 0o644
 
 // WriteFile writes data to path, preserving the existing permission bits when
-// path already identifies a file. It coordinates with AtomicFile writers for
-// the same pathname and currently resolved target. New files use the standard
-// 0644 mode, subject to the process umask.
+// path already identifies a file. It coordinates with AtomicFile and other
+// WriteFile writers for the same pathname and currently resolved target. The
+// coordination applies to Vaar writers using these primitives; external
+// processes that ignore the advisory lock contract are outside the
+// stale-state guarantee. New files use the standard 0644 mode, subject to the
+// process umask.
 func WriteFile(path string, data []byte) error {
 	lock, err := acquirePathLock(path)
 	if err != nil {

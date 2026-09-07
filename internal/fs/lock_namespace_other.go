@@ -7,11 +7,8 @@ SPDX-License-Identifier: Apache-2.0
 
 package fs
 
-import (
-	"errors"
-	"os"
-)
+import "runtime"
 
-func lockFile(*os.File) error { return errors.ErrUnsupported }
-
-func unlockFile(*os.File) error { return errors.ErrUnsupported }
+func fallbackLockNamespace() (string, error) {
+	return "platform:" + runtime.GOOS, nil
+}
