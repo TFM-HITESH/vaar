@@ -1,10 +1,8 @@
-/*
-Copyright © 2026 envaar
-SPDX-License-Identifier: Apache-2.0
-*/
+// Copyright © 2026 envaar
+// SPDX-License-Identifier: Apache-2.0
 
-// Package lint_test measures the runner against a representative dotenv
-// fixture.
+// Package lint_test measures the application service against a representative
+// dotenv fixture.
 package lint_test
 
 import (
@@ -14,11 +12,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/envaar/vaar/internal/lint"
+	applicationlint "github.com/envaar/vaar/internal/application/lint"
 	"github.com/envaar/vaar/internal/lint/rules"
 )
 
-func BenchmarkRunnerSmoke(b *testing.B) {
+func BenchmarkApplicationSmoke(b *testing.B) {
 	root := b.TempDir()
 	fixture := []byte(strings.Join([]string{
 		"KEY=value",
@@ -32,12 +30,12 @@ func BenchmarkRunnerSmoke(b *testing.B) {
 		b.Fatalf("write benchmark fixture: %v", err)
 	}
 
-	runner := lint.NewRunner(rules.All()...)
+	service := applicationlint.New(rules.All()...)
 	b.ReportAllocs()
 	b.ResetTimer()
 
 	for i := 0; i < b.N; i++ {
-		if _, err := runner.Run(context.Background(), lint.Options{Root: root}); err != nil {
+		if _, err := service.Run(context.Background(), applicationlint.Options{Root: root}); err != nil {
 			b.Fatalf("benchmark run failed: %v", err)
 		}
 	}

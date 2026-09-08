@@ -14,7 +14,8 @@ package lint
 // Fixability is intrinsic and cannot drift: a rule is fixable exactly when it
 // carries a Fix method, and IsFixable and the --list-rules FIXABLE column both
 // key on the presence of that method rather than a hand-maintained claim.
-// ApplyFixes composes these Fix halves in a canonical order to repair files.
+// The mutation planner composes these Fix halves in a canonical order to
+// repair files.
 type FixableRule interface {
 	// Fix returns data with this rule's findings repaired, so composing fix
 	// halves scopes --fix to selected rules. Repairing a finding may normalize
