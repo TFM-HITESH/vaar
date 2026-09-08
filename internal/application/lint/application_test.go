@@ -15,6 +15,7 @@ import (
 	applicationlint "github.com/envaar/vaar/internal/application/lint"
 	lintmodel "github.com/envaar/vaar/internal/lint"
 	"github.com/envaar/vaar/internal/lint/rules"
+	"github.com/envaar/vaar/internal/mutations"
 	"github.com/envaar/vaar/internal/scope"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
@@ -429,6 +430,139 @@ func TestServiceConvertsDocumentsThroughAnalysisAdapter(t *testing.T) {
 	}
 }
 
+func TestServiceDefaultDiscoveryLintsArbitraryDotenvSuffix(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env.preview-local")
+	mustWrite(t, path, "KEY=first\nKEY=second\n")
+
+	result, err := applicationlint.New(rules.NewDuplicateKey()).Run(
+		context.Background(),
+		applicationlint.Options{Root: root},
+	)
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if got, want := len(result.LoadedDocuments), 1; got != want {
+		t.Fatalf("loaded document count = %d, want %d", got, want)
+	}
+	if got, want := result.LoadedDocuments[0].Path, ".env.preview-local"; got != want {
+		t.Fatalf("display path = %q, want %q", got, want)
+	}
+	if got, want := len(result.Findings), 1; got != want {
+		t.Fatalf("finding count = %d, want %d", got, want)
+	}
+	if got, want := result.Findings[0].File, ".env.preview-local"; got != want {
+		t.Fatalf("finding file = %q, want %q", got, want)
+	}
+}
+
+func TestServiceFixReanalyzesAndMarksFixedFindings(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	mustWrite(t, path, "TRAIL=one  \n")
+
+	ruleCalls := 0
+	service := applicationlint.New(
+		applicationRule{id: "pass-counter", calls: &ruleCalls},
+		rules.NewTrailingWhitespace(),
+	)
+	result, err := service.Run(context.Background(), applicationlint.Options{
+		Root:      root,
+		Fix:       true,
+		OnlyRules: []string{"pass-counter", "trailing-whitespace"},
+	})
+	if err != nil {
+		t.Fatalf("fix run failed: %v", err)
+	}
+
+	if got, want := ruleCalls, 2; got != want {
+		t.Fatalf("rule calls = %d, want %d after reanalysis", got, want)
+	}
+	if !result.Changed {
+		t.Fatal("expected fix run to report a change")
+	}
+	if len(result.Findings) != 1 || !result.Findings[0].Fixed {
+		t.Fatalf("findings = %#v, want one fixed finding", result.Findings)
+	}
+	if got, want := string(readFile(t, path)), "TRAIL=one\n"; got != want {
+		t.Fatalf("fixed content = %q, want %q", got, want)
+	}
+}
+
+func TestServiceFixWithoutChangesSkipsReanalysis(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	mustWrite(t, path, "KEY=one\nKEY=two\n")
+
+	ruleCalls := 0
+	service := applicationlint.New(
+		applicationRule{id: "pass-counter", calls: &ruleCalls},
+		rules.NewDuplicateKey(),
+	)
+	result, err := service.Run(context.Background(), applicationlint.Options{
+		Root:      root,
+		Fix:       true,
+		OnlyRules: []string{"pass-counter", "duplicate-key"},
+	})
+	if err != nil {
+		t.Fatalf("fix run failed: %v", err)
+	}
+
+	if got, want := ruleCalls, 1; got != want {
+		t.Fatalf("rule calls = %d, want %d without reanalysis", got, want)
+	}
+	if result.Changed {
+		t.Fatal("expected no-change fix run to report no change")
+	}
+	if len(result.Findings) != 1 || result.Findings[0].Fixed {
+		t.Fatalf("findings = %#v, want one remaining finding", result.Findings)
+	}
+}
+
+func TestServiceFixPropagatesMutationFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	original := "TRAIL=one  \n"
+	mustWrite(t, path, original)
+	applyErr := errors.New("mutation failed")
+
+	service := applicationlint.NewWithDependencies(applicationlint.Dependencies{
+		ApplyPlan: func(mutations.Plan) error { return applyErr },
+	}, rules.NewTrailingWhitespace())
+	_, err := service.Run(context.Background(), applicationlint.Options{Root: root, Fix: true})
+	if !errors.Is(err, applyErr) {
+		t.Fatalf("error = %v, want mutation error", err)
+	}
+	if got, want := string(readFile(t, path)), original; got != want {
+		t.Fatalf("content after failed mutation = %q, want %q", got, want)
+	}
+}
+
+func TestServiceFixPropagatesReloadFailure(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, ".env")
+	mustWrite(t, path, "TRAIL=one  \n")
+	reloadErr := errors.New("reload failed")
+	loadCalls := 0
+
+	service := applicationlint.NewWithDependencies(applicationlint.Dependencies{
+		LoadDotenv: func(paths, displayPaths []string) ([]sourcedotenv.Document, error) {
+			loadCalls++
+			if loadCalls == 2 {
+				return nil, reloadErr
+			}
+			return sourcedotenv.LoadMany(paths, displayPaths)
+		},
+	}, rules.NewTrailingWhitespace())
+	_, err := service.Run(context.Background(), applicationlint.Options{Root: root, Fix: true})
+	if !errors.Is(err, reloadErr) {
+		t.Fatalf("error = %v, want reload error", err)
+	}
+	if got, want := loadCalls, 2; got != want {
+		t.Fatalf("load calls = %d, want %d", got, want)
+	}
+}
+
 func mustWrite(t *testing.T, path, contents string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -437,4 +571,13 @@ func mustWrite(t *testing.T, path, contents string) {
 	if err := os.WriteFile(path, []byte(contents), 0o644); err != nil {
 		t.Fatalf("write %s failed: %v", path, err)
 	}
+}
+
+func readFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s failed: %v", path, err)
+	}
+	return data
 }

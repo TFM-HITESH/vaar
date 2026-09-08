@@ -5,13 +5,7 @@ SPDX-License-Identifier: Apache-2.0
 
 package lint
 
-import (
-	"bytes"
-	"sort"
-
-	"github.com/envaar/vaar/internal/envfile"
-	"github.com/envaar/vaar/internal/fs"
-)
+import "sort"
 
 // fixOrder lists the fixable rule IDs in the order their fix halves must
 // compose to reproduce the historical whole-file normalization exactly. The
@@ -75,32 +69,4 @@ func FixData(rules []Rule, data []byte) []byte {
 		data = fix(data)
 	}
 	return data
-}
-
-// ApplyFixes repairs each discovered dotenv file by composing the fix halves of
-// the provided rules and reports whether any file changed on disk.
-func ApplyFixes(rules []Rule, paths []string) (bool, error) {
-	fixes := composeFixes(rules)
-	changed := false
-	for _, path := range paths {
-		data, err := fs.ReadFile(path)
-		if err != nil {
-			return false, err
-		}
-
-		fixed := data
-		for _, fix := range fixes {
-			fixed = fix(fixed)
-		}
-		if bytes.Equal(fixed, data) {
-			continue
-		}
-
-		if err := envfile.Write(path, fixed); err != nil {
-			return false, err
-		}
-		changed = true
-	}
-
-	return changed, nil
 }

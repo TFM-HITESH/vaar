@@ -1,19 +1,26 @@
+// Copyright © 2026 envaar
+// SPDX-License-Identifier: Apache-2.0
+
 package lint
 
-import "testing"
+import (
+	"testing"
+
+	lintmodel "github.com/envaar/vaar/internal/lint"
+)
 
 func TestMarkFixedFindingsIgnoresLineChangesForMatching(t *testing.T) {
-	original := []Finding{{
+	original := []lintmodel.Finding{{
 		Rule:     "trailing-whitespace",
-		Severity: SeverityWarn,
+		Severity: lintmodel.SeverityWarn,
 		File:     ".env",
 		Line:     1,
 		Message:  "line has trailing whitespace",
 	}}
 
-	remaining := []Finding{{
+	remaining := []lintmodel.Finding{{
 		Rule:     "trailing-whitespace",
-		Severity: SeverityWarn,
+		Severity: lintmodel.SeverityWarn,
 		File:     ".env",
 		Line:     2,
 		Message:  "line has trailing whitespace",

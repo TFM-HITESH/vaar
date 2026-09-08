@@ -44,7 +44,7 @@ lint: ## Check formatting and run the CLI lint smoke test.
 	cd "$$tmpdir" && $(GO) run ./cmd/vaar lint
 
 bench: ## Run the lint smoke benchmark.
-	$(GO) test ./internal/lint -run '^$$' -bench '^BenchmarkRunnerSmoke$$' -benchmem
+	$(GO) test ./internal/application/lint -run '^$$' -bench '^BenchmarkApplicationSmoke$$' -benchmem
 
 build: ## Build the CLI binary into bin/vaar.
 	@mkdir -p $(BIN_DIR)

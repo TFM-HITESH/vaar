@@ -10,6 +10,7 @@ import (
 	"io"
 	"sort"
 
+	applicationlint "github.com/envaar/vaar/internal/application/lint"
 	"github.com/envaar/vaar/internal/lint"
 	"github.com/envaar/vaar/internal/lint/rules"
 	lintoutput "github.com/envaar/vaar/internal/output/lint"
@@ -21,7 +22,7 @@ import (
 // exposes the flag surface for safe fixes, JSON output, JSON file export,
 // rule selection and explicit discovery scopes.
 func newLintCmd() *cobra.Command {
-	var selection lint.Options
+	var selection applicationlint.Options
 	var lintFix bool
 	var lintJSON bool
 	var lintOutput string
@@ -73,7 +74,7 @@ Use either --target or --target-dir, not both.`,
 				return NewToolError("--output requires --json", nil)
 			}
 
-			opts := lint.Options{
+			opts := applicationlint.Options{
 				Root:      ".",
 				Target:    selection.Target,
 				TargetDir: selection.TargetDir,
@@ -111,8 +112,8 @@ Use either --target or --target-dir, not both.`,
 				}
 			}
 
-			runner := lint.NewRunner(allRules...)
-			result, err := runner.RunWithSelection(cmd.Context(), opts, scopeSelection)
+			service := applicationlint.New(allRules...)
+			result, err := service.RunWithSelection(cmd.Context(), opts, scopeSelection)
 			if err != nil {
 				return NewToolError("lint failed", err)
 			}
@@ -173,7 +174,7 @@ Use either --target or --target-dir, not both.`,
 
 // firstListRulesConflict returns the first execution flag that conflicts with
 // --list-rules, or an empty string when there is no conflict.
-func firstListRulesConflict(selection lint.Options, fix, json bool, output string) string {
+func firstListRulesConflict(selection applicationlint.Options, fix, json bool, output string) string {
 	if len(selection.OnlyRules) > 0 {
 		return "--only"
 	}

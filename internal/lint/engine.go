@@ -77,6 +77,16 @@ func (e *Engine) SelectRules(opts EngineOptions) ([]Rule, error) {
 	return plan.Rules(), nil
 }
 
+// ValidateRuleSelection checks requested only/skip rule IDs against the
+// available rule set without resolving scope or running any rules.
+func ValidateRuleSelection(all []Rule, only, skip []string) error {
+	_, err := NewEngine(all...).SelectRulePlan(EngineOptions{
+		OnlyRules: only,
+		SkipRules: skip,
+	})
+	return err
+}
+
 // Run selects and executes rules against snapshot. It performs no filesystem
 // I/O, parsing, mutation, rendering or exit-code mapping.
 func (e *Engine) Run(ctx context.Context, snapshot analysis.Snapshot, opts EngineOptions) ([]Finding, error) {
@@ -109,7 +119,7 @@ func (e *Engine) RunPlan(ctx context.Context, snapshot analysis.Snapshot, plan R
 		findings = append(findings, ruleFindings...)
 	}
 
-	sortFindings(findings)
+	SortFindings(findings)
 	return findings, nil
 }
 
@@ -179,9 +189,9 @@ func validateRuleIDs(ids []string, flag string, allowed map[string]Rule) error {
 	return nil
 }
 
-// sortFindings orders output by file, line, severity, rule and message so
+// SortFindings orders output by file, line, severity, rule and message so
 // repeated runs produce the same report.
-func sortFindings(findings []Finding) {
+func SortFindings(findings []Finding) {
 	sort.SliceStable(findings, func(i, j int) bool {
 		left := findings[i]
 		right := findings[j]
