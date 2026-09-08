@@ -3,7 +3,7 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-package envfile
+package dotenv
 
 // RawLine keeps one line of text and its detected line ending before semantic
 // parsing starts.

@@ -7,8 +7,8 @@ package deterministic
 
 import (
 	"github.com/envaar/vaar/internal/analysis"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 type trailingWhitespaceRule struct{}
@@ -21,7 +21,7 @@ func (trailingWhitespaceRule) ID() string          { return "trailing-whitespace
 func (trailingWhitespaceRule) Description() string { return "warns about trailing whitespace" }
 
 // Fix trims trailing spaces and tabs from every line and empties whitespace-only lines.
-func (trailingWhitespaceRule) Fix(data []byte) []byte { return envfile.TrimTrailingWhitespace(data) }
+func (trailingWhitespaceRule) Fix(data []byte) []byte { return dotenv.TrimTrailingWhitespace(data) }
 
 func (trailingWhitespaceRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)

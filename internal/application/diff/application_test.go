@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	applicationdiff "github.com/envaar/vaar/internal/application/diff"
-	"github.com/envaar/vaar/internal/envfile"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
 
@@ -25,22 +24,18 @@ func TestServiceLoadsBothOperandsThroughSharedSourceLoader(t *testing.T) {
 
 			return []sourcedotenv.Document{
 				{
-					File: envfile.File{
-						Path: displayPaths[0],
-						Lines: []envfile.Line{
-							{Number: 1, Key: "COMMON", HasKey: true, HasAssignment: true},
-							{Number: 2, Key: "LEFT_ONLY", HasKey: true, HasAssignment: true},
-						},
+					Path: displayPaths[0],
+					Lines: []sourcedotenv.Line{
+						{Number: 1, Key: "COMMON", HasKey: true, HasAssignment: true},
+						{Number: 2, Key: "LEFT_ONLY", HasKey: true, HasAssignment: true},
 					},
 					SourcePath: paths[0],
 				},
 				{
-					File: envfile.File{
-						Path: displayPaths[1],
-						Lines: []envfile.Line{
-							{Number: 1, Key: "COMMON", HasKey: true, HasAssignment: true},
-							{Number: 2, Key: "RIGHT_ONLY", HasKey: true, HasAssignment: true},
-						},
+					Path: displayPaths[1],
+					Lines: []sourcedotenv.Line{
+						{Number: 1, Key: "COMMON", HasKey: true, HasAssignment: true},
+						{Number: 2, Key: "RIGHT_ONLY", HasKey: true, HasAssignment: true},
 					},
 					SourcePath: paths[1],
 				},

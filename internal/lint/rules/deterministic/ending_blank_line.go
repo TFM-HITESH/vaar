@@ -7,8 +7,8 @@ package deterministic
 
 import (
 	"github.com/envaar/vaar/internal/analysis"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 type endingBlankLineRule struct{}
@@ -23,7 +23,7 @@ func (endingBlankLineRule) Description() string {
 }
 
 // Fix removes trailing blank lines and leaves exactly one final newline.
-func (endingBlankLineRule) Fix(data []byte) []byte { return envfile.TrimFinalBlankLines(data) }
+func (endingBlankLineRule) Fix(data []byte) []byte { return dotenv.TrimFinalBlankLines(data) }
 
 func (endingBlankLineRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)

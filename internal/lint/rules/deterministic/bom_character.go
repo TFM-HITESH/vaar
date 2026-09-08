@@ -7,8 +7,8 @@ package deterministic
 
 import (
 	"github.com/envaar/vaar/internal/analysis"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 type bomCharacterRule struct{}
@@ -23,7 +23,7 @@ func (bomCharacterRule) Description() string {
 }
 
 // Fix strips the leading UTF-8 BOM so the first key on disk is not altered.
-func (bomCharacterRule) Fix(data []byte) []byte { return envfile.StripBOM(data) }
+func (bomCharacterRule) Fix(data []byte) []byte { return dotenv.StripBOM(data) }
 
 func (bomCharacterRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)

@@ -13,7 +13,6 @@ import (
 
 	"github.com/envaar/vaar/internal/analysis"
 	analysisdotenv "github.com/envaar/vaar/internal/analysis/dotenv"
-	"github.com/envaar/vaar/internal/envfile"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
 
@@ -270,28 +269,28 @@ func TestCompareResultUsesPaths(t *testing.T) {
 func compareParsedFiles(t *testing.T, leftPath, leftData, rightPath, rightData string) (Result, error) {
 	t.Helper()
 
-	left, err := envfile.Parse(leftPath, []byte(leftData))
+	left, err := sourcedotenv.Parse(leftPath, []byte(leftData))
 	if err != nil {
 		return Result{}, err
 	}
-	right, err := envfile.Parse(rightPath, []byte(rightData))
+	right, err := sourcedotenv.Parse(rightPath, []byte(rightData))
 	if err != nil {
 		return Result{}, err
 	}
 
 	leftAnalysis := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
 		ID: analysis.DocumentID(leftPath),
-		Source: sourcedotenv.Document{
-			File:       left,
-			SourcePath: leftPath,
-		},
+		Source: func() sourcedotenv.Document {
+			left.SourcePath = leftPath
+			return left
+		}(),
 	})
 	rightAnalysis := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
 		ID: analysis.DocumentID(rightPath),
-		Source: sourcedotenv.Document{
-			File:       right,
-			SourcePath: rightPath,
-		},
+		Source: func() sourcedotenv.Document {
+			right.SourcePath = rightPath
+			return right
+		}(),
 	})
 
 	return CompareInventories(

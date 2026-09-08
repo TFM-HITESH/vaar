@@ -25,7 +25,6 @@ import (
 
 	"github.com/envaar/vaar/internal/analysis"
 	analysisdotenv "github.com/envaar/vaar/internal/analysis/dotenv"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
 	"github.com/envaar/vaar/internal/lint/rules"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
@@ -77,16 +76,16 @@ var fixabilityUnconstructible = map[string]string{}
 func hasFinding(t *testing.T, rule lint.Rule, data []byte) bool {
 	t.Helper()
 
-	file, err := envfile.Parse("drift.env", data)
+	file, err := sourcedotenv.Parse("drift.env", data)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
 	snapshotDocument := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
 		ID: analysis.DocumentID("drift.env"),
-		Source: sourcedotenv.Document{
-			File:       file,
-			SourcePath: "drift.env",
-		},
+		Source: func() sourcedotenv.Document {
+			file.SourcePath = "drift.env"
+			return file
+		}(),
 	})
 	findings, err := rule.Run(lint.Context{
 		Snapshot: analysis.NewSnapshot([]analysis.Document{snapshotDocument}),
@@ -293,12 +292,12 @@ func equivalenceCorpus(t *testing.T) []corpusCase {
 	return cases
 }
 
-// legacyNormalize is a frozen, verbatim copy of the original
-// envfile.Normalize implementation that the per-rule fix halves replaced. It
+// legacyNormalize is a frozen, verbatim copy of the original whole-file
+// Normalize implementation that the per-rule fix halves replaced. It
 // exists only here so TestFixDataMatchesLegacyNormalize can pin the new
 // composition against real historical behavior.
 func legacyNormalize(data []byte) []byte {
-	lines := envfile.Split(data)
+	lines := sourcedotenv.Split(data)
 	if len(lines) == 0 {
 		return []byte{}
 	}

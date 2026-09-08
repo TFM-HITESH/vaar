@@ -11,25 +11,22 @@ import (
 
 	"github.com/envaar/vaar/internal/analysis"
 	analysisdotenv "github.com/envaar/vaar/internal/analysis/dotenv"
-	"github.com/envaar/vaar/internal/envfile"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
 
 func TestFromDocumentPreservesIdentityPathsAndMetadata(t *testing.T) {
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path:             "config/.env.example",
-			BOM:              true,
-			MixedLineEndings: true,
-			EndsWithNewline:  true,
-			Lines: []envfile.Line{{
-				Number:        1,
-				Key:           "PORT",
-				HasKey:        true,
-				HasValue:      true,
-				HasAssignment: true,
-			}},
-		},
+		Path:             "config/.env.example",
+		BOM:              true,
+		MixedLineEndings: true,
+		EndsWithNewline:  true,
+		Lines: []sourcedotenv.Line{{
+			Number:        1,
+			Key:           "PORT",
+			HasKey:        true,
+			HasValue:      true,
+			HasAssignment: true,
+		}},
 		SourcePath: "/workspace/config/.env.example",
 	}
 
@@ -60,14 +57,14 @@ func TestFromDocumentsPreservesOrderAndIdentity(t *testing.T) {
 		{
 			ID: analysis.DocumentID("second"),
 			Source: sourcedotenv.Document{
-				File:       envfile.File{Path: "second.env"},
+				Path:       "second.env",
 				SourcePath: "/sources/second.env",
 			},
 		},
 		{
 			ID: analysis.DocumentID("first"),
 			Source: sourcedotenv.Document{
-				File:       envfile.File{Path: "first.env"},
+				Path:       "first.env",
 				SourcePath: "/sources/first.env",
 			},
 		},
@@ -92,7 +89,7 @@ func TestFromDocumentPreservesEmptyDocument(t *testing.T) {
 	got := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
 		ID: analysis.DocumentID("empty"),
 		Source: sourcedotenv.Document{
-			File: envfile.File{Path: "empty.env"},
+			Path: "empty.env",
 		},
 	})
 
@@ -109,37 +106,35 @@ func TestFromDocumentPreservesEmptyDocument(t *testing.T) {
 
 func TestFromDocumentPreservesLineOrderNumbersAndFacts(t *testing.T) {
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path: "facts.env",
-			Lines: []envfile.Line{
-				{
-					Number:               1,
-					Key:                  "FIRST",
-					HasKey:               true,
-					HasValue:             true,
-					HasAssignment:        true,
-					QuoteState:           envfile.QuoteDouble,
-					CommentState:         envfile.CommentInline,
-					DelimiterState:       envfile.DelimiterEquals,
-					LineEnding:           envfile.LineEndingCRLF,
-					SpaceBeforeDelimiter: true,
-					SpaceAfterDelimiter:  true,
-				},
-				{
-					Number:         2,
-					IsComment:      true,
-					CommentState:   envfile.CommentFull,
-					DelimiterState: envfile.DelimiterNone,
-					LineEnding:     envfile.LineEndingLF,
-				},
-				{
-					Number:         7,
-					Key:            "BARE",
-					HasKey:         true,
-					DelimiterState: envfile.DelimiterMissing,
-					QuoteState:     envfile.QuoteUnbalanced,
-					LineEnding:     envfile.LineEndingNone,
-				},
+		Path: "facts.env",
+		Lines: []sourcedotenv.Line{
+			{
+				Number:               1,
+				Key:                  "FIRST",
+				HasKey:               true,
+				HasValue:             true,
+				HasAssignment:        true,
+				QuoteState:           sourcedotenv.QuoteDouble,
+				CommentState:         sourcedotenv.CommentInline,
+				DelimiterState:       sourcedotenv.DelimiterEquals,
+				LineEnding:           sourcedotenv.LineEndingCRLF,
+				SpaceBeforeDelimiter: true,
+				SpaceAfterDelimiter:  true,
+			},
+			{
+				Number:         2,
+				IsComment:      true,
+				CommentState:   sourcedotenv.CommentFull,
+				DelimiterState: sourcedotenv.DelimiterNone,
+				LineEnding:     sourcedotenv.LineEndingLF,
+			},
+			{
+				Number:         7,
+				Key:            "BARE",
+				HasKey:         true,
+				DelimiterState: sourcedotenv.DelimiterMissing,
+				QuoteState:     sourcedotenv.QuoteUnbalanced,
+				LineEnding:     sourcedotenv.LineEndingNone,
 			},
 		},
 		SourcePath: "/sources/facts.env",
@@ -188,19 +183,17 @@ func TestFromDocumentPreservesLineOrderNumbersAndFacts(t *testing.T) {
 
 func TestFromDocumentDerivesOnlySafeWhitespaceFacts(t *testing.T) {
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path: "whitespace.env",
-			Lines: []envfile.Line{
-				{
-					Number:             1,
-					LeadingWhitespace:  " \t",
-					TrailingWhitespace: "\t",
-					Value:              "semantic\tvalue",
-				},
-				{
-					Number: 2,
-					Value:  "semantic\nvalue",
-				},
+		Path: "whitespace.env",
+		Lines: []sourcedotenv.Line{
+			{
+				Number:             1,
+				LeadingWhitespace:  " \t",
+				TrailingWhitespace: "\t",
+				Value:              "semantic\tvalue",
+			},
+			{
+				Number: 2,
+				Value:  "semantic\nvalue",
 			},
 		},
 	}
@@ -220,37 +213,35 @@ func TestFromDocumentDerivesOnlySafeWhitespaceFacts(t *testing.T) {
 
 func TestFromDocumentPreservesEmptyAssignmentColonAndBlankFacts(t *testing.T) {
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path: "syntax.env",
-			Lines: []envfile.Line{
-				{
-					Number:               3,
-					Key:                  "EMPTY",
-					HasKey:               true,
-					HasValue:             false,
-					HasAssignment:        true,
-					DelimiterState:       envfile.DelimiterEquals,
-					LineEnding:           envfile.LineEndingLF,
-					LeadingWhitespace:    " ",
-					TrailingWhitespace:   " ",
-					SpaceBeforeDelimiter: true,
-					SpaceAfterDelimiter:  true,
-				},
-				{
-					Number:         4,
-					IsBlank:        true,
-					DelimiterState: envfile.DelimiterNone,
-					LineEnding:     envfile.LineEndingCRLF,
-				},
-				{
-					Number:         5,
-					Key:            "COLON",
-					HasKey:         true,
-					HasValue:       true,
-					QuoteState:     envfile.QuoteSingle,
-					DelimiterState: envfile.DelimiterColon,
-					LineEnding:     envfile.LineEndingNone,
-				},
+		Path: "syntax.env",
+		Lines: []sourcedotenv.Line{
+			{
+				Number:               3,
+				Key:                  "EMPTY",
+				HasKey:               true,
+				HasValue:             false,
+				HasAssignment:        true,
+				DelimiterState:       sourcedotenv.DelimiterEquals,
+				LineEnding:           sourcedotenv.LineEndingLF,
+				LeadingWhitespace:    " ",
+				TrailingWhitespace:   " ",
+				SpaceBeforeDelimiter: true,
+				SpaceAfterDelimiter:  true,
+			},
+			{
+				Number:         4,
+				IsBlank:        true,
+				DelimiterState: sourcedotenv.DelimiterNone,
+				LineEnding:     sourcedotenv.LineEndingCRLF,
+			},
+			{
+				Number:         5,
+				Key:            "COLON",
+				HasKey:         true,
+				HasValue:       true,
+				QuoteState:     sourcedotenv.QuoteSingle,
+				DelimiterState: sourcedotenv.DelimiterColon,
+				LineEnding:     sourcedotenv.LineEndingNone,
 			},
 		},
 	}
@@ -273,15 +264,13 @@ func TestFromDocumentPreservesEmptyAssignmentColonAndBlankFacts(t *testing.T) {
 
 func TestFromDocumentCopiesLineStorage(t *testing.T) {
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path:  "mutable.env",
-			Lines: []envfile.Line{{Number: 1, Key: "ORIGINAL"}},
-		},
+		Path:  "mutable.env",
+		Lines: []sourcedotenv.Line{{Number: 1, Key: "ORIGINAL"}},
 	}
 
 	got := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{Source: source})
 	source.Lines[0].Key = "MUTATED"
-	source.Lines = append(source.Lines, envfile.Line{Number: 2, Key: "APPENDED"})
+	source.Lines = append(source.Lines, sourcedotenv.Line{Number: 2, Key: "APPENDED"})
 
 	if len(got.Lines) != 1 || got.Lines[0].Key != "ORIGINAL" {
 		t.Fatalf("converted Lines = %#v, want independent original line slice", got.Lines)
@@ -291,18 +280,16 @@ func TestFromDocumentCopiesLineStorage(t *testing.T) {
 func TestFromDocumentDoesNotExposeSourceValues(t *testing.T) {
 	secret := "sentinel-value-from-source-85"
 	source := sourcedotenv.Document{
-		File: envfile.File{
-			Path:     "safe.env",
-			Original: []byte(secret),
-			Lines: []envfile.Line{{
-				Number:   1,
-				Key:      "SECRET_KEY",
-				Raw:      secret,
-				Content:  secret,
-				Value:    secret,
-				ValueRaw: secret,
-			}},
-		},
+		Path:     "safe.env",
+		Original: []byte(secret),
+		Lines: []sourcedotenv.Line{{
+			Number:   1,
+			Key:      "SECRET_KEY",
+			Raw:      secret,
+			Content:  secret,
+			Value:    secret,
+			ValueRaw: secret,
+		}},
 	}
 
 	got := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{Source: source})

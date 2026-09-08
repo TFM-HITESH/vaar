@@ -7,8 +7,8 @@ package deterministic
 
 import (
 	"github.com/envaar/vaar/internal/analysis"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 type lineEndingRule struct{}
@@ -26,10 +26,10 @@ func (lineEndingRule) Description() string { return "flags files with mixed CRLF
 // lone CR) has no line-ending finding, so a scoped --fix leaves it byte for byte
 // unchanged instead of blindly forcing LF on bytes this rule does not own.
 func (lineEndingRule) Fix(data []byte) []byte {
-	if !envfile.HasMixedLineEndings(data) {
+	if !dotenv.HasMixedLineEndings(data) {
 		return data
 	}
-	return envfile.NormalizeLineEndings(data)
+	return dotenv.NormalizeLineEndings(data)
 }
 
 func (lineEndingRule) Run(ctx lint.Context) ([]lint.Finding, error) {

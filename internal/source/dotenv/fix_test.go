@@ -3,14 +3,14 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package envfile_test verifies the per-rule fix transforms that decompose the
+// Package dotenv_test verifies the per-rule fix transforms that decompose the
 // historical whole-file Normalize pass.
-package envfile_test
+package dotenv_test
 
 import (
 	"testing"
 
-	"github.com/envaar/vaar/internal/envfile"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 // TestTrimTrailingWhitespacePreservesDelimiters pins that the transform strips
@@ -90,7 +90,7 @@ func TestTrimTrailingWhitespacePreservesDelimiters(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := envfile.TrimTrailingWhitespace([]byte(tc.in))
+			got := dotenv.TrimTrailingWhitespace([]byte(tc.in))
 			if string(got) != tc.want {
 				t.Fatalf("TrimTrailingWhitespace(%q) = %q, want %q", tc.in, string(got), tc.want)
 			}
@@ -138,7 +138,7 @@ func TestCollapseBlankLinesPreservesCRLF(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := envfile.CollapseBlankLines([]byte(tc.in))
+			got := dotenv.CollapseBlankLines([]byte(tc.in))
 			if string(got) != tc.want {
 				t.Fatalf("CollapseBlankLines(%q) = %q, want %q", tc.in, string(got), tc.want)
 			}
@@ -189,7 +189,7 @@ func TestCollapseBlankLinesPreservesLoneCR(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := envfile.CollapseBlankLines([]byte(tc.in))
+			got := dotenv.CollapseBlankLines([]byte(tc.in))
 			if string(got) != tc.want {
 				t.Fatalf("CollapseBlankLines(%q) = %q, want %q", tc.in, string(got), tc.want)
 			}
@@ -249,7 +249,7 @@ func TestTrimFinalBlankLinesPreservesLoneCR(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := envfile.TrimFinalBlankLines([]byte(tc.in))
+			got := dotenv.TrimFinalBlankLines([]byte(tc.in))
 			if string(got) != tc.want {
 				t.Fatalf("TrimFinalBlankLines(%q) = %q, want %q", tc.in, string(got), tc.want)
 			}
@@ -317,7 +317,7 @@ func TestTrimFinalBlankLinesPreservesCRLF(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			got := envfile.TrimFinalBlankLines([]byte(tc.in))
+			got := dotenv.TrimFinalBlankLines([]byte(tc.in))
 			if string(got) != tc.want {
 				t.Fatalf("TrimFinalBlankLines(%q) = %q, want %q", tc.in, string(got), tc.want)
 			}
@@ -326,7 +326,7 @@ func TestTrimFinalBlankLinesPreservesCRLF(t *testing.T) {
 }
 
 // TestHasMixedLineEndings pins the condition the finding-scoped line-ending fix
-// uses: it must match the parser's File.MixedLineEndings (sawLF && sawCRLF)
+// uses: it must match the parser's Document.MixedLineEndings (sawLF && sawCRLF)
 // exactly, so a file mixes endings only when it carries both an LF-terminated
 // and a CRLF-terminated line. A file with uniform endings — all LF, all CRLF, or
 // all lone CR — is not mixed and so has no line-ending finding to fix.
@@ -350,7 +350,7 @@ func TestHasMixedLineEndings(t *testing.T) {
 	for _, tc := range cases {
 		tc := tc
 		t.Run(tc.name, func(t *testing.T) {
-			if got := envfile.HasMixedLineEndings([]byte(tc.in)); got != tc.want {
+			if got := dotenv.HasMixedLineEndings([]byte(tc.in)); got != tc.want {
 				t.Fatalf("HasMixedLineEndings(%q) = %v, want %v", tc.in, got, tc.want)
 			}
 		})

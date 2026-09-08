@@ -52,7 +52,6 @@ func TestDiffCLIUsesApplicationAndOutputBoundaries(t *testing.T) {
 	for _, forbidden := range []string{
 		"github.com/envaar/vaar/internal/diff",
 		"github.com/envaar/vaar/internal/fs",
-		"github.com/envaar/vaar/internal/envfile",
 		"github.com/envaar/vaar/internal/source/dotenv",
 	} {
 		if imports[forbidden] {

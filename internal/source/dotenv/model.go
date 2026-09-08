@@ -3,11 +3,15 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-// Package envfile contains the temporary line-aware dotenv parser/model used
-// during the source-layer migration. New source-facing loading belongs in
-// internal/source/dotenv; this package remains available for downstream
-// compatibility until its parser model is migrated.
-package envfile
+// Package dotenv owns the source-specific line-aware dotenv parser/model and
+// pure byte transformations used by dotenv lint fixes.
+package dotenv
+
+import (
+	"os"
+
+	"github.com/envaar/vaar/internal/fs"
+)
 
 // QuoteState records how Parse handled the value on a line.
 type QuoteState string
@@ -88,13 +92,22 @@ type Line struct {
 	BOM                  bool
 }
 
-// File captures one dotenv file, its parsed lines and whole-file metadata
-// such as BOM presence, mixed endings and whether the file ends cleanly.
-type File struct {
+// Document is one selected dotenv source together with its parsed model and
+// the source metadata required by later analysis and mutation layers.
+//
+// Original and the raw fields on Line remain source-owned data. Analysis
+// adapters must convert this model into value-free facts before engines or
+// reporters consume it.
+type Document struct {
 	Path             string
 	BOM              bool
 	MixedLineEndings bool
 	EndsWithNewline  bool
 	Lines            []Line
 	Original         []byte
+
+	SourcePath   string
+	ResolvedPath string
+	Mode         os.FileMode
+	Identity     fs.FileIdentity
 }

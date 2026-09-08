@@ -11,7 +11,6 @@ import (
 
 	"github.com/envaar/vaar/internal/analysis"
 	analysisdotenv "github.com/envaar/vaar/internal/analysis/dotenv"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
 	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
@@ -30,17 +29,17 @@ type ruleTestCase struct {
 func runRuleTest(t *testing.T, tc ruleTestCase) {
 	t.Helper()
 
-	file, err := envfile.Parse("test.env", tc.input)
+	file, err := sourcedotenv.Parse("test.env", tc.input)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
 
 	snapshotDocument := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
 		ID: analysis.DocumentID("test.env"),
-		Source: sourcedotenv.Document{
-			File:       file,
-			SourcePath: "test.env",
-		},
+		Source: func() sourcedotenv.Document {
+			file.SourcePath = "test.env"
+			return file
+		}(),
 	})
 	findings, err := tc.rule.Run(lint.Context{
 		Snapshot: analysis.NewSnapshot([]analysis.Document{snapshotDocument}),
