@@ -32,11 +32,44 @@ type Document struct {
 	Identity     fs.FileIdentity
 }
 
+// ErrIsDirectory identifies a source path that resolves to a directory.
+var ErrIsDirectory = errors.New("dotenv source is a directory")
+
+// ErrNotRegularFile identifies a source path that is not a regular file.
+var ErrNotRegularFile = errors.New("dotenv source is not a regular file")
+
+// LoadError identifies the display path whose source loading failed while
+// preserving the underlying cause for callers that need to classify it.
+type LoadError struct {
+	// Path is the caller-supplied display path for the failed source.
+	Path string
+	// Err is the underlying source-loading error.
+	Err error
+}
+
+// Error returns a path-qualified source-loading error.
+func (e *LoadError) Error() string {
+	return fmt.Sprintf("load dotenv document %q: %v", e.Path, e.Err)
+}
+
+// Unwrap exposes the underlying source-loading error for classification.
+func (e *LoadError) Unwrap() error {
+	return e.Err
+}
+
 // Load validates, reads and parses one selected dotenv file. displayPath is
 // preserved as the parsed document path for diagnostics and reports. It also
 // captures the resolved target path and filesystem identity needed by safe
 // mutation planning.
 func Load(path, displayPath string) (Document, error) {
+	pathInfo, err := os.Stat(path)
+	if err != nil {
+		return Document{}, fmt.Errorf("open dotenv source %q: %w", path, err)
+	}
+	if err := validateSourceInfo(pathInfo, path); err != nil {
+		return Document{}, err
+	}
+
 	// O_NONBLOCK prevents opening a Unix FIFO from blocking before its type can
 	// be checked. Windows ignores this flag because its file handles are already
 	// non-blocking.
@@ -51,13 +84,9 @@ func Load(path, displayPath string) (Document, error) {
 		return Document{}, fmt.Errorf("stat dotenv source %q: %w", path, err)
 	}
 
-	if info.IsDir() {
+	if err := validateSourceInfo(info, path); err != nil {
 		_ = file.Close()
-		return Document{}, fmt.Errorf("dotenv source %q is a directory", path)
-	}
-	if !info.Mode().IsRegular() {
-		_ = file.Close()
-		return Document{}, fmt.Errorf("dotenv source %q is not a regular file", path)
+		return Document{}, err
 	}
 
 	resolvedPath, err := fs.CanonicalPath(path)
@@ -104,10 +133,20 @@ func LoadMany(paths, displayPaths []string) ([]Document, error) {
 	for i, path := range paths {
 		document, err := Load(path, displayPaths[i])
 		if err != nil {
-			return nil, fmt.Errorf("load dotenv document %q: %w", displayPaths[i], err)
+			return nil, &LoadError{Path: displayPaths[i], Err: err}
 		}
 		documents = append(documents, document)
 	}
 
 	return documents, nil
+}
+
+func validateSourceInfo(info os.FileInfo, path string) error {
+	if info.IsDir() {
+		return fmt.Errorf("dotenv source %q is a directory: %w", path, ErrIsDirectory)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("dotenv source %q is not a regular file: %w", path, ErrNotRegularFile)
+	}
+	return nil
 }

@@ -20,7 +20,7 @@ import (
 	"testing"
 )
 
-func TestDiffCLIUsesOutputDiffPackage(t *testing.T) {
+func TestDiffCLIUsesApplicationAndOutputBoundaries(t *testing.T) {
 	workingDirectory, err := os.Getwd()
 	if err != nil {
 		t.Fatalf("get test working directory: %v", err)
@@ -44,6 +44,20 @@ func TestDiffCLIUsesOutputDiffPackage(t *testing.T) {
 	const outputDiffPath = "github.com/envaar/vaar/internal/output/diff"
 	if !imports[outputDiffPath] {
 		t.Fatalf("diff CLI must import %q", outputDiffPath)
+	}
+	const applicationDiffPath = "github.com/envaar/vaar/internal/application/diff"
+	if !imports[applicationDiffPath] {
+		t.Fatalf("diff CLI must import %q", applicationDiffPath)
+	}
+	for _, forbidden := range []string{
+		"github.com/envaar/vaar/internal/diff",
+		"github.com/envaar/vaar/internal/fs",
+		"github.com/envaar/vaar/internal/envfile",
+		"github.com/envaar/vaar/internal/source/dotenv",
+	} {
+		if imports[forbidden] {
+			t.Fatalf("diff CLI must not import %q", forbidden)
+		}
 	}
 	if imports["github.com/envaar/vaar/internal/report"] {
 		t.Fatal("diff CLI must not import internal/report")

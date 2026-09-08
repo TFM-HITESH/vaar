@@ -210,6 +210,9 @@ func TestLoadRejectsDirectory(t *testing.T) {
 	if !strings.Contains(err.Error(), "directory") {
 		t.Fatalf("error does not identify directory input: %v", err)
 	}
+	if !errors.Is(err, dotenv.ErrIsDirectory) {
+		t.Fatalf("directory error should preserve dotenv.ErrIsDirectory: %v", err)
+	}
 	if !strings.Contains(err.Error(), filepath.Base(path)) {
 		t.Fatalf("error does not identify path: %v", err)
 	}
@@ -231,6 +234,29 @@ func TestLoadRejectsNonRegularFileWhereSupported(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "regular") {
 		t.Fatalf("error does not identify non-regular input: %v", err)
+	}
+	if !errors.Is(err, dotenv.ErrNotRegularFile) {
+		t.Fatalf("non-regular error should preserve dotenv.ErrNotRegularFile: %v", err)
+	}
+}
+
+func TestLoadManyPreservesFailingDisplayPath(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.env")
+
+	_, err := dotenv.LoadMany([]string{path}, []string{"service/.env"})
+	if err == nil {
+		t.Fatal("expected load error")
+	}
+
+	var loadErr *dotenv.LoadError
+	if !errors.As(err, &loadErr) {
+		t.Fatalf("load error does not preserve typed context: %v", err)
+	}
+	if loadErr.Path != "service/.env" {
+		t.Fatalf("load error path = %q, want %q", loadErr.Path, "service/.env")
+	}
+	if !errors.Is(loadErr, os.ErrNotExist) {
+		t.Fatalf("load error should preserve not-exist cause: %v", loadErr)
 	}
 }
 
