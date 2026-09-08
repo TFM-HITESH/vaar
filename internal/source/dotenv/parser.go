@@ -58,7 +58,7 @@ func parseLine(path string, raw RawLine, first bool) Line {
 	content := raw.Content
 	if first && strings.HasPrefix(content, "\ufeff") {
 		// Only the first line can carry a BOM and we strip it from the parsed
-		// content while leaving the original bytes untouched in File.Original.
+		// content while leaving the original bytes untouched in Document.Original.
 		line.BOM = true
 		content = strings.TrimPrefix(content, "\ufeff")
 		line.Content = content
