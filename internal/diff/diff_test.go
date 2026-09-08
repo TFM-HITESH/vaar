@@ -11,7 +11,10 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/envaar/vaar/internal/analysis"
+	analysisdotenv "github.com/envaar/vaar/internal/analysis/dotenv"
 	"github.com/envaar/vaar/internal/envfile"
+	sourcedotenv "github.com/envaar/vaar/internal/source/dotenv"
 )
 
 func TestCompareKeyPresence(t *testing.T) {
@@ -131,7 +134,7 @@ func TestCompareKeyPresence(t *testing.T) {
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result, err := Compare(".env", []byte(tc.left), ".env.example", []byte(tc.right))
+			result, err := compareParsedFiles(t, ".env", tc.left, ".env.example", tc.right)
 			if err != nil {
 				t.Fatalf("compare failed: %v", err)
 			}
@@ -142,11 +145,12 @@ func TestCompareKeyPresence(t *testing.T) {
 }
 
 func TestCompareOnlyIncludesAssignmentKeys(t *testing.T) {
-	result, err := Compare(
+	result, err := compareParsedFiles(
+		t,
 		".env",
-		[]byte("FOO\nBAR:wrong-delimiter\nBAZ=value\n"),
+		"FOO\nBAR:wrong-delimiter\nBAZ=value\n",
 		".env.example",
-		[]byte("BAZ=example\n"),
+		"BAZ=example\n",
 	)
 	if err != nil {
 		t.Fatalf("compare failed: %v", err)
@@ -202,17 +206,17 @@ func TestResultHasDifferences(t *testing.T) {
 	}
 }
 
-func TestCompareFilesReusesParsedFiles(t *testing.T) {
-	left, err := envfile.Parse("left.env", []byte("FOO=left\n"))
-	if err != nil {
-		t.Fatalf("parse left failed: %v", err)
-	}
-	right, err := envfile.Parse("right.env", []byte("BAR=right\n"))
-	if err != nil {
-		t.Fatalf("parse right failed: %v", err)
-	}
+func TestCompareInventoriesUsesLabels(t *testing.T) {
+	left := analysis.NewKeyInventory(analysis.Document{
+		DisplayPath: "left.env",
+		Lines:       []analysis.Line{{Key: "FOO", HasKey: true, HasAssignment: true}},
+	})
+	right := analysis.NewKeyInventory(analysis.Document{
+		DisplayPath: "right.env",
+		Lines:       []analysis.Line{{Key: "BAR", HasKey: true, HasAssignment: true}},
+	})
 
-	result := CompareFiles(left, right)
+	result := CompareInventories("left.env", left, "right.env", right)
 
 	assertResult(t, result, []string{"BAR"}, []string{"FOO"})
 	if result.Left != "left.env" {
@@ -226,11 +230,12 @@ func TestCompareFilesReusesParsedFiles(t *testing.T) {
 func TestCompareResultDoesNotExposeValues(t *testing.T) {
 	const value = "fake-password-value"
 
-	result, err := Compare(
+	result, err := compareParsedFiles(
+		t,
 		".env",
-		[]byte("DATABASE_PASSWORD="+value+"\n"),
+		"DATABASE_PASSWORD="+value+"\n",
 		".env.example",
-		[]byte("DATABASE_URL=fake-example-url\n"),
+		"DATABASE_URL=fake-example-url\n",
 	)
 	if err != nil {
 		t.Fatalf("compare failed: %v", err)
@@ -246,10 +251,13 @@ func TestCompareResultDoesNotExposeValues(t *testing.T) {
 }
 
 func TestCompareResultUsesPaths(t *testing.T) {
-	result, err := Compare("left.env", []byte("FOO=left\n"), "right.env", []byte("BAR=right\n"))
-	if err != nil {
-		t.Fatalf("compare failed: %v", err)
-	}
+	left := analysis.NewKeyInventory(analysis.Document{
+		Lines: []analysis.Line{{Key: "FOO", HasKey: true, HasAssignment: true}},
+	})
+	right := analysis.NewKeyInventory(analysis.Document{
+		Lines: []analysis.Line{{Key: "BAR", HasKey: true, HasAssignment: true}},
+	})
+	result := CompareInventories("left.env", left, "right.env", right)
 
 	if result.Left != "left.env" {
 		t.Fatalf("unexpected left path: got %q want %q", result.Left, "left.env")
@@ -257,6 +265,41 @@ func TestCompareResultUsesPaths(t *testing.T) {
 	if result.Right != "right.env" {
 		t.Fatalf("unexpected right path: got %q want %q", result.Right, "right.env")
 	}
+}
+
+func compareParsedFiles(t *testing.T, leftPath, leftData, rightPath, rightData string) (Result, error) {
+	t.Helper()
+
+	left, err := envfile.Parse(leftPath, []byte(leftData))
+	if err != nil {
+		return Result{}, err
+	}
+	right, err := envfile.Parse(rightPath, []byte(rightData))
+	if err != nil {
+		return Result{}, err
+	}
+
+	leftAnalysis := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
+		ID: analysis.DocumentID(leftPath),
+		Source: sourcedotenv.Document{
+			File:       left,
+			SourcePath: leftPath,
+		},
+	})
+	rightAnalysis := analysisdotenv.FromDocument(analysisdotenv.DocumentInput{
+		ID: analysis.DocumentID(rightPath),
+		Source: sourcedotenv.Document{
+			File:       right,
+			SourcePath: rightPath,
+		},
+	})
+
+	return CompareInventories(
+		leftPath,
+		analysis.NewKeyInventory(leftAnalysis),
+		rightPath,
+		analysis.NewKeyInventory(rightAnalysis),
+	), nil
 }
 
 func assertResult(t *testing.T, result Result, wantMissingFromLeft, wantMissingFromRight []string) {
