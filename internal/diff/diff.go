@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"sort"
 
+	"github.com/envaar/vaar/internal/analysis"
 	"github.com/envaar/vaar/internal/envfile"
 )
 
@@ -31,6 +32,8 @@ func (r Result) HasDifferences() bool {
 }
 
 // Compare parses two dotenv inputs and compares assignment key presence only.
+// It remains a compatibility wrapper until the diff command migrates to the
+// shared source and analysis pipeline.
 func Compare(leftPath string, leftData []byte, rightPath string, rightData []byte) (Result, error) {
 	left, err := envfile.Parse(leftPath, leftData)
 	if err != nil {
@@ -45,33 +48,59 @@ func Compare(leftPath string, leftData []byte, rightPath string, rightData []byt
 	return CompareFiles(left, right), nil
 }
 
-// CompareFiles compares key presence between two already parsed dotenv files.
-func CompareFiles(left envfile.File, right envfile.File) Result {
-	leftKeys := keySet(left)
-	rightKeys := keySet(right)
+// CompareInventories compares two value-free analysis key inventories. Labels
+// are supplied separately because an empty inventory has no declaration from
+// which a display path could be recovered.
+func CompareInventories(leftLabel string, left analysis.KeyInventory, rightLabel string, right analysis.KeyInventory) Result {
+	leftKeys := left.Keys()
+	rightKeys := right.Keys()
 
 	return Result{
-		Left:             left.Path,
-		Right:            right.Path,
-		MissingFromLeft:  missingKeys(leftKeys, rightKeys),
-		MissingFromRight: missingKeys(rightKeys, leftKeys),
+		Left:             leftLabel,
+		Right:            rightLabel,
+		MissingFromLeft:  missingInventoryKeys(leftKeys, rightKeys),
+		MissingFromRight: missingInventoryKeys(rightKeys, leftKeys),
 	}
 }
 
-func keySet(file envfile.File) map[string]struct{} {
-	keys := make(map[string]struct{})
+// CompareFiles compares key presence between two already parsed dotenv files.
+// It is a temporary compatibility adapter for callers that have not yet
+// migrated to analysis key inventories.
+func CompareFiles(left envfile.File, right envfile.File) Result {
+	return CompareInventories(
+		left.Path,
+		inventoryFromFile(left),
+		right.Path,
+		inventoryFromFile(right),
+	)
+}
+
+func inventoryFromFile(file envfile.File) analysis.KeyInventory {
+	lines := make([]analysis.Line, 0, len(file.Lines))
 	for _, line := range file.Lines {
-		if line.HasAssignment && line.HasKey {
-			keys[line.Key] = struct{}{}
-		}
+		lines = append(lines, analysis.Line{
+			Number:        line.Number,
+			Key:           line.Key,
+			HasKey:        line.HasKey,
+			HasAssignment: line.HasAssignment,
+		})
 	}
-	return keys
+
+	return analysis.NewKeyInventory(analysis.Document{
+		DisplayPath: file.Path,
+		Lines:       lines,
+	})
 }
 
-func missingKeys(have map[string]struct{}, want map[string]struct{}) []string {
-	missing := make([]string, 0)
-	for key := range want {
-		if _, ok := have[key]; !ok {
+func missingInventoryKeys(have, want []string) []string {
+	haveSet := make(map[string]struct{}, len(have))
+	for _, key := range have {
+		haveSet[key] = struct{}{}
+	}
+
+	missing := make([]string, 0, len(want))
+	for _, key := range want {
+		if _, ok := haveSet[key]; !ok {
 			missing = append(missing, key)
 		}
 	}
