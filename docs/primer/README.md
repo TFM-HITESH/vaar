@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0 -->
 
 # Vaar Primer
 
-This page is a short introduction to Vaar for new developers. It explains what the project does, how a lint execution moves through the codebase and how to run the tool locally.
+This page is a short introduction to Vaar for new developers. It explains what the project does, how lint and diff executions move through the codebase and how to run the tool locally.
 
 This primer complements the reference docs: [System Overview](../system-overview.md)
 for package boundaries, [Usage](../usage.md) for the command map and
@@ -19,7 +19,7 @@ Vaar is a Go command-line tool for checking environment configuration. It discov
 
 `.env` files are rarely reviewed with the same rigor as code. Because they are sensitive, they are difficult to share and diff. So duplicate keys, wrong delimiters, stray whitespaces, non-portable key names and other such issues slip through unnoticed. Vaar makes that drift visible and, where a fix is unambiguous, repairs it.
 
-### What Vaar Checks 
+### What Vaar Checks
 
 By default Vaar discovers `.env` and any filename beginning with `.env.`, such
 as `.env.example`, `.env.local` or `.env.preview-local`. It does not treat
@@ -33,38 +33,68 @@ These principles detailed in the [System Overview](../system-overview.md) and ar
 
 - Deterministic first. Every rule is currently under `internal/lint/rules/deterministic/` and reports an exact finding from file content.
 - Stable ordering and output. Findings are sorted by file, line, severity, rule and message so scripts and CI can rely on the result.
-- Preserve original file state where possible. Parsing keeps original bytes, line numbers, BOM state and line-ending information available to later stages.
+- Preserve original file state where possible. The dotenv source keeps original
+  bytes, line numbers, BOM state and line-ending information available to the
+  source and mutation boundaries, while analysis exposes only safe facts.
 - Keep the command layer thin. `internal/cli/` handles command wiring, flags and exit codes while the main logic stays in focused packages.
 
 ## Components
 
-A lint run passes through a small set of packages. Each package has one main
-responsibility.
+Lint and diff runs pass through a small set of packages. Each package has one
+main responsibility.
 
-| Stage | Package | Responsibility |
-| ----- | ------- | -------------- |
-| Entrypoint | `cmd/vaar/` | Starts the binary and hands control to `internal/cli`. |
-| CLI layer | `internal/cli/` | Cobra command wiring, flag translation, exit codes and user-facing errors. |
-| Discovery / walk | `internal/fs/` | Walks the tree, matches known dotenv filenames and skips ignored directories such as `.git`, `build`, `dist`, `node_modules`, `testdata` and `vendor` (`Discover`). |
-| Envfile parser | `internal/envfile/` | Parses bytes into a line-aware model and provides `Normalize`/`Write` for safe rewrites. |
-| Rule engine | `internal/lint/` | Selects rules with `--only`/`--skip`, runs them, sorts findings and drives the fix pass (`Runner`). |
-| Rule registry | `internal/lint/rules/` | `All()` returns the built-in rule set in a stable order over the category packages. |
-| Report / output | `internal/report/` | Renders findings as plain text or JSON. |
+| Stage             | Package                                           | Responsibility                                                                                                                                                          |
+| ----------------- | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Entrypoint        | `cmd/vaar/`                                       | Starts the binary and hands control to `internal/cli`.                                                                                                                  |
+| CLI layer         | `internal/cli/`                                   | Cobra command wiring, flag translation, exit codes and user-facing errors.                                                                                              |
+| Scope / discovery | `internal/scope/`, `internal/fs/`                 | Selects targets, walks the tree, matches known dotenv filenames and skips ignored directories such as `.git`, `build`, `dist`, `node_modules`, `testdata` and `vendor`. |
+| Dotenv source     | `internal/source/dotenv/`                         | Loads files, parses them into a source-owned line-aware model and provides pure dotenv byte transforms.                                                                 |
+| Analysis          | `internal/analysis/`, `internal/analysis/dotenv/` | Converts source documents into ordered, value-free facts and key inventories.                                                                                           |
+| Rule engine       | `internal/lint/`                                  | Selects rules with `--only`/`--skip`, runs them against analysis and sorts findings.                                                                                    |
+| Lint application  | `internal/application/lint/`                      | Coordinates loading, analysis, lint execution and optional mutation re-analysis.                                                                                        |
+| Mutations         | `internal/mutations/`                             | Plans, validates and safely applies selected fixes through `internal/fs/`.                                                                                              |
+| Diff application  | `internal/application/diff/`, `internal/diff/`    | Loads both operands, builds analysis inventories and compares keys.                                                                                                     |
+| Rule registry     | `internal/lint/rules/`                            | `All()` returns the built-in rule set in a stable order over the category packages.                                                                                     |
+| Report / output   | `internal/output/`                                | Renders typed lint and diff results as plain text or JSON.                                                                                                              |
 
 ### How A Lint Run Works
 
-The `Runner` in `internal/lint/runner.go` ties these packages together:
+The lint application service in `internal/application/lint/` ties the source,
+analysis, lint and output boundaries together:
 
 1. Select the active rules after applying `--only` and `--skip`.
 2. Resolve the lint scope: the whole repository, one `--target` file or one `--target-dir` tree.
-3. Discover dotenv files and load them into in-memory snapshots.
-4. Run the selected rules against those snapshots.
-5. If `--fix` is enabled, apply safe fixes, re-parse the changed files, re-run the rules and mark findings that disappeared as `[fixed]`.
+3. Load selected dotenv sources and convert them into a value-free analysis snapshot.
+4. Run the selected rules against that snapshot.
+5. If `--fix` is enabled, build and apply a safe mutation plan, reload the
+   changed files, rebuild analysis and rerun the rules, marking findings that
+   disappeared as `[fixed]`.
 6. Sort the findings into a stable order.
-7. Render text or JSON output.
-8. Exit based on the findings that remain after fixing.
+7. Render the typed result through `internal/output/`.
+8. Map the result to an exit code in `internal/cli/`.
 
 Each finding carries a severity (`warn` or `error`), a rule name, the file, a line number and a message. The built-in rules are catalogued in [docs/lint/rules/README.md](../lint/rules/README.md).
+
+### How A Diff Run Works
+
+The diff application service in `internal/application/diff/` ties the source,
+analysis, diff and output boundaries together:
+
+1. The CLI validates that exactly two dotenv paths were provided.
+2. The application service loads both operands through
+   `internal/source/dotenv/`, preserving their order and display paths.
+3. The source documents are converted into value-free analysis documents.
+4. `internal/analysis/` builds a key inventory for each document.
+5. `internal/diff/` compares key presence between the two inventories.
+6. The service returns a typed diff result containing paths, missing keys and
+   difference status.
+7. `internal/output/diff/` renders the result as text or JSON.
+8. `internal/cli/` maps the result to the process exit code.
+
+Diff compares key presence only. It does not compare dotenv values, raw source
+lines or source bytes. A clean comparison exits with `0`, a comparison with
+missing keys exits with `1`, and an input, loading or rendering failure exits
+with `2`.
 
 ## Getting Started
 

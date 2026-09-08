@@ -3,22 +3,22 @@ Copyright © 2026 envaar
 SPDX-License-Identifier: Apache-2.0
 */
 
-package envfile
+package dotenv
 
 import "strings"
 
 // Parse converts dotenv bytes into a semantic file model that keeps the
 // original bytes, the parsed lines and the metadata needed for lint rules.
-func Parse(path string, data []byte) (File, error) {
+func Parse(path string, data []byte) (Document, error) {
 	rawLines := Split(data)
-	file := File{
+	document := Document{
 		Path:     path,
 		Original: append([]byte(nil), data...),
 		Lines:    make([]Line, 0, len(rawLines)),
 	}
 
 	if len(rawLines) == 0 {
-		return file, nil
+		return document, nil
 	}
 
 	var sawLF bool
@@ -27,7 +27,7 @@ func Parse(path string, data []byte) (File, error) {
 	for i, raw := range rawLines {
 		line := parseLine(path, raw, i == 0)
 		if line.BOM {
-			file.BOM = true
+			document.BOM = true
 		}
 		switch line.LineEnding {
 		case LineEndingLF:
@@ -35,13 +35,13 @@ func Parse(path string, data []byte) (File, error) {
 		case LineEndingCRLF:
 			sawCRLF = true
 		}
-		file.Lines = append(file.Lines, line)
+		document.Lines = append(document.Lines, line)
 	}
 
-	file.MixedLineEndings = sawLF && sawCRLF
-	file.EndsWithNewline = rawLines[len(rawLines)-1].Ending != LineEndingNone
+	document.MixedLineEndings = sawLF && sawCRLF
+	document.EndsWithNewline = rawLines[len(rawLines)-1].Ending != LineEndingNone
 
-	return file, nil
+	return document, nil
 }
 
 // parseLine turns one raw line into the semantic fields used by lint rules and
@@ -58,7 +58,7 @@ func parseLine(path string, raw RawLine, first bool) Line {
 	content := raw.Content
 	if first && strings.HasPrefix(content, "\ufeff") {
 		// Only the first line can carry a BOM and we strip it from the parsed
-		// content while leaving the original bytes untouched in File.Original.
+		// content while leaving the original bytes untouched in Document.Original.
 		line.BOM = true
 		content = strings.TrimPrefix(content, "\ufeff")
 		line.Content = content

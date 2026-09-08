@@ -7,8 +7,8 @@ package deterministic
 
 import (
 	"github.com/envaar/vaar/internal/analysis"
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/lint"
+	"github.com/envaar/vaar/internal/source/dotenv"
 )
 
 type extraBlankLineRule struct{}
@@ -21,7 +21,7 @@ func (extraBlankLineRule) ID() string          { return "extra-blank-line" }
 func (extraBlankLineRule) Description() string { return "flags repeated blank lines inside a file" }
 
 // Fix collapses each run of consecutive blank lines to a single blank line.
-func (extraBlankLineRule) Fix(data []byte) []byte { return envfile.CollapseBlankLines(data) }
+func (extraBlankLineRule) Fix(data []byte) []byte { return dotenv.CollapseBlankLines(data) }
 
 func (extraBlankLineRule) Run(ctx lint.Context) ([]lint.Finding, error) {
 	findings := make([]lint.Finding, 0)

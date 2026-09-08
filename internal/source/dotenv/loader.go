@@ -12,25 +12,8 @@ import (
 	"os"
 	"syscall"
 
-	"github.com/envaar/vaar/internal/envfile"
 	"github.com/envaar/vaar/internal/fs"
 )
-
-// Document is one selected dotenv source together with the parsed model and
-// file metadata required by later analysis and mutation layers.
-//
-// File remains embedded temporarily so source consumers can use the existing
-// parser facts without duplicating the envfile model. SourcePath identifies
-// the on-disk input, while File.Path retains the caller-provided display path.
-// ResolvedPath and Identity capture the target observed during loading so a
-// later mutation can reject a retargeted or replaced source safely.
-type Document struct {
-	envfile.File
-	SourcePath   string
-	ResolvedPath string
-	Mode         os.FileMode
-	Identity     fs.FileIdentity
-}
 
 // ErrIsDirectory identifies a source path that resolves to a directory.
 var ErrIsDirectory = errors.New("dotenv source is a directory")
@@ -104,18 +87,16 @@ func Load(path, displayPath string) (Document, error) {
 		return Document{}, fmt.Errorf("close dotenv source %q: %w", path, closeErr)
 	}
 
-	parsed, err := envfile.Parse(displayPath, data)
+	parsed, err := Parse(displayPath, data)
 	if err != nil {
 		return Document{}, fmt.Errorf("parse dotenv source %q: %w", displayPath, err)
 	}
 
-	return Document{
-		File:         parsed,
-		SourcePath:   path,
-		ResolvedPath: resolvedPath,
-		Mode:         info.Mode().Perm(),
-		Identity:     fs.NewFileIdentity(info),
-	}, nil
+	parsed.SourcePath = path
+	parsed.ResolvedPath = resolvedPath
+	parsed.Mode = info.Mode().Perm()
+	parsed.Identity = fs.NewFileIdentity(info)
+	return parsed, nil
 }
 
 // LoadMany loads selected dotenv files in the order supplied by paths and
