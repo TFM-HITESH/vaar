@@ -63,6 +63,30 @@ func TestDiffCLIUsesApplicationAndOutputBoundaries(t *testing.T) {
 	}
 }
 
+func TestDiffHelpDocumentsSupportedOutputModes(t *testing.T) {
+	var stdout bytes.Buffer
+
+	cmd := newDiffCmd()
+	cmd.SetOut(&stdout)
+	cmd.SetArgs([]string{"--help"})
+
+	if err := cmd.Execute(); err != nil {
+		t.Fatalf("execute help failed: %v", err)
+	}
+
+	for _, want := range []string{
+		"Compare the names of keys declared in two dotenv files.",
+		"It never compares or prints dotenv values.",
+		"vaar diff .env .env.example",
+		"vaar diff --json .env .env.example",
+		"vaar diff --quiet .env .env.example",
+	} {
+		if !strings.Contains(stdout.String(), want) {
+			t.Errorf("diff help does not contain %q: %q", want, stdout.String())
+		}
+	}
+}
+
 func TestDiffCommandReportsDifferencesForRelativePaths(t *testing.T) {
 	root := t.TempDir()
 	mustWriteFile(t, filepath.Join(root, ".env"), "FOO=local\nCOMMON=local\n")

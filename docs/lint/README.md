@@ -3,7 +3,7 @@ SPDX-License-Identifier: Apache-2.0 -->
 
 # Lint Guide
 
-This page contains the lint-specific command reference for Vaar. Refer to [README](../README.md) for installation, verification and the shortest possible first-run steps.
+This page contains the lint-specific command reference for Vaar. Refer to [README](../../README.md) for installation, verification and the shortest possible first-run steps.
 
 ## Description of the Command
 
@@ -31,7 +31,7 @@ Lint also comes with additional flags such as:
 
 Applies only the safe formatting fixes that can be made deterministically. Vaar reports the findings from the original file and marks findings that disappeared after the fix with `[fixed]`. It then reports any findings that remain in the post-fix file. The exit code is based on the remaining findings, so a file with only repaired findings exits successfully.
 
-`--fix` is affected by `--only` and `--skip`. It applies the supported fixes of only the selected rules, so `vaar lint --fix --only=trailing-whitespace` repairs trailing whitespace while leaving blank-line and other formatting untouched, and `vaar lint --fix --skip=trailing-whitespace` repairs everything except trailing whitespace. Plain `vaar lint --fix` applies every rule's fix. Selecting a rule with no fix half (its `FIXABLE` column reads `no`) repairs nothing and is not an error. That rule's finding simply remains in the report.
+`--fix` is affected by `--only` and `--skip`. It applies the supported fixes of only the selected rules, so `vaar lint --fix --only=trailing-whitespace` repairs trailing whitespace while leaving blank-line and other formatting untouched, and `vaar lint --fix --skip=trailing-whitespace` repairs everything except trailing whitespace. Plain `vaar lint --fix` applies every rule's fix. Selecting a rule with no fix (its `FIXABLE` column reads `no`) repairs nothing and is not an error. That rule's finding simply remains in the report.
 
 ### `--json`
 
@@ -62,7 +62,7 @@ vaar lint \
 
 ### `--target`
 
-Lints only the specified file path. The path can be relative or absolute, and the file does not need to match the default dotenv filename list. 
+Lints only the specified file path. The path can be relative or absolute, and the file does not need to match the default dotenv filename list.
 
 `--target` and `--target-dir` are mutually exclusive. If both `--target` and `--target-dir` are supplied, `vaar lint` returns an error.
 
