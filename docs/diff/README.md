@@ -68,8 +68,8 @@ vaar diff --quiet .env .env.example
 
 `vaar diff` uses simple exit codes that are useful for scripting:
 
-- `0` means no key differences were reported.
-- `1` means key differences were reported.
+- `0` means no key differences were found.
+- `1` means key differences were found.
 - `2` means the command failed before producing results.
 
 The default output of `vaar diff` is plain text. Use `--json` when you want
@@ -84,7 +84,7 @@ Producing comparison output and passing diff are separate outcomes:
 
 - If both files contain the same key set, `vaar diff` prints `No key differences found` and exits with code `0`.
 - If the files contain different key sets, `vaar diff` reports the missing keys or renders the JSON result and exits with code `1`.
-- If the arguments are invalid, a file cannot be read, an output operation fails or the flags conflict, `vaar diff` fails before producing a comparison result and exits with code `2`.
+- If the arguments are invalid, a file cannot be read, an output operation fails or the flags conflict, `vaar diff` fails before producing a comparison result and exits with code `2`. (It is possible that an output failure can occur after comparison, but the command still fails because it cannot deliver the result.)
 
 ## Examples
 
