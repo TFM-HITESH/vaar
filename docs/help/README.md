@@ -31,6 +31,7 @@ This page only covers the root help screen.
 Command-specific help pages are linked below:
 
 - [Lint help](./help-lint.md)
+- [Diff help](./help-diff.md)
 - [Completion help](./help-completion.md)
 
 > [!NOTE]

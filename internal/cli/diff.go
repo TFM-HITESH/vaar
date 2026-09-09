@@ -21,7 +21,15 @@ func newDiffCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "diff <left> <right>",
 		Short: "Compare dotenv key presence",
-		Args:  exactDiffArgs,
+		Long: `Compare the names of keys declared in two dotenv files.
+
+Vaar compares key presence only. It never compares or prints dotenv values.
+Use --json for machine-readable output or --quiet when you only need the exit
+status.`,
+		Example: `  vaar diff .env .env.example
+  vaar diff --json .env .env.example
+  vaar diff --quiet .env .env.example`,
+		Args: exactDiffArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if jsonOutput && quiet {
 				return NewToolError("--quiet and --json cannot be used together", nil)

@@ -9,33 +9,31 @@ SPDX-License-Identifier: Apache-2.0 -->
 
 # Vaar
 
-Vaar is an intelligent linter for environment correctness.
+Vaar is an intelligent environment analysis toolkit for validating, understanding, and safely working with .env files across developer and agentic workflows.
 
-It catches broken `.env` files, misconfiguratons in environments and helps you work with your secrets safely both during development as well as in production.
+It helps you catch broken `.env` files, misconfigurations in environments and helps you work with your secrets safely, be it development or production, for both humans and agents.
 
 ## Why Vaar?
 
 Issues with `.env` files are usually missed or overlooked during code review due to them being difficult to share and compare thanks to their sensitive nature. Since environment variables are not as easily reviewable as code artifacts, it is all the more important to ensure their hygiene and quality.
 
-Vaar encompasses linting and hygiene for various environment configurations, thus enforcing better environment management standards. A single execution discovers files, selects a customisable set of rules to enforce, reports findings and repairs any formatting drift that can be safely fixed.
+Vaar provides various tools to analyse your environment configuration safely. Each tool selects a safe scope, parses information from multiple sources, analyses it safely without leaking secrets, applies its
+own semantics and produces stable results.
 
 ## What makes Vaar different?
 
 Most dotenv linters are limited to `.env` files while secret scanners look for leaked credentials. Generic code-quality tools are not centered on environment correctness. Additionally, runtime validators only run after application code starts.
 
-The endeavour with Vaar has begun with deterministic `.env` hygiene, but is envisioned to grow into repo-aware, intelligent environment correctness tooling.
+Vaar has begun with simple `.env` hygiene, but is envisioned to grow into a suite of repo-aware, intelligent environment correctness tooling.
 
-Vaar aims to :
+Vaar currently provides:
 
-- detect env vars used in source code and flag issues
-- compare code usage against `.env.example`
-- detect stale, missing, duplicated and undocumented variables
-- understand Docker and Docker Compose env behavior and flag misconfigurations
-- understand CI env references in GitHub Actions and flag anamolous configurations
-- add framework-specific rules for Next.js, Vite, Prisma, Node, Docker and GitHub Actions
-- emit machine-readable output for CI, review tools and future integrations
+- deterministic dotenv linting through `vaar lint`
+- key-presence comparison between dotenv files through `vaar diff`
+- stable text and JSON output for command-line users and automation
+- safe, deterministic formatting fixes for supported lint findings
 
-For more details about the planned scope and future direction of Vaar, read the [Roadmap](#roadmap).
+The roadmap extends this foundation toward repository-aware analysis across source code, contracts, infrastructure and external providers. Read the [Roadmap](#roadmap) for the planned direction.
 
 ## Installation
 
@@ -101,132 +99,73 @@ Expand-Archive .\$archive -DestinationPath .
 
 ## Quick start
 
+Vaar has command-specific guides for detailed flags, output formats and exit
+codes. The examples below are simplified for an easy quick start.
+
+### Lint
+
 To test out the linter's capabilities, run Vaar from the repository you want to check:
 
 ```bash
 vaar lint
 ```
 
-Use the `--json` flag output for a portable export in the form of a JSON:
+See the [Lint guide](./docs/lint/README.md) for rule selection, JSON output,
+safe fixes, explicit targets, exit codes and the rule catalog. The
+[basic example](./examples/basic/README.md) and [broken example](./examples/broken/README.md)
+show representative lint input.
+
+### Diff
+
+Compare the keys declared/present in two dotenv files:
 
 ```bash
-vaar lint --json
+vaar diff .env .env.example
 ```
 
-To write that JSON report to a file instead of `stdout`, use:
+Diff compares key presence only and never compares or prints dotenv values. See
+the [Diff guide](./docs/diff/README.md) for JSON output, quiet mode, exit codes
+and CI usage.
 
-```bash
-vaar lint --json --output=report.json
-```
+## Command documentation
 
-This writes the JSON report to a file. For the full file-output behavior, see [docs/lint/README.md](./docs/lint/README.md).
+Use the [command map](./docs/usage.md) to find the supported commands and
+their detailed references:
 
-To apply safe, non destructive formatting fixes, use:
-
-```bash
-vaar lint --fix
-```
-
-> [!NOTE]
-> `--fix` can be scoped with `--only` and `--skip` as well, so that it applies only the fixes of the selected rules. So `vaar lint --fix --only=trailing-whitespace` repairs trailing whitespace and leaves everything else untouched. Selecting a rule that has no fix (its `FIXABLE` column reads `no`) repairs nothing and is not an error. The finding simply remains in the output report.
-
-To lint only using specific rules:
-
-```bash
-vaar lint --only=duplicate-key --only=invalid-key-name
-```
-
-To lint while skipping specific rules:
-
-```bash
-vaar lint --skip=trailing-whitespace
-```
-
-To lint one explicit dotenv file or one directory tree:
-
-```bash
-vaar lint --target=.env.staging
-vaar lint --target-dir=src
-```
-
-To list every registered rule, whether `--fix` repairs it and its description:
-
-```bash
-vaar lint --list-rules
-```
-
-For the lint-specific command reference and rule catalog, see [docs/lint/README.md](./docs/lint/README.md).
-
-### Examples
-
-To try out `vaar lint` quickly, you can use some of the examples given below:
-
-- [Basic example](./examples/basic/README.md)
-- [Broken example](./examples/broken/README.md)
-
-To use these, simply create a new `.env` file at your repository and copy paste the values from the respective `.env.example`.
-
-## Example Output
-
-```text
-warn space-character .env:2 line has spaces around the key, delimiter or value
-warn trailing-whitespace .env:2 line has trailing whitespace
-error duplicate-key .env:4 APP_ENV is defined more than once
-error incorrect-delimiter .env:5 DATABASE_URL uses ':' instead of '='
-error invalid-key-name .env:6 api-key is not a portable env key name
-warn ending-blank-line .env:8 file must end with exactly one final newline
-warn extra-blank-line .env:8 repeated blank line
-exit status 1
-```
-
-## Implemented Rules
-
-To see the complete list of implemented rules, see [docs/lint/rules](./docs/lint/rules/README.md) for the full rule reference.
-
-## Usage
-
-For details about the supported commands (and their flags), supported behaviour and so on, please read [Usage](/docs/usage.md).
-
-For specific details about the lint functionality command, please see [Lint Usage Guide](/docs/lint/README.md) for more information about Output and Exit Codes, Rule Selection etc.
+- [Lint guide](./docs/lint/README.md), including the [rule catalog](./docs/lint/rules/README.md)
+- [Diff guide](./docs/diff/README.md)
+- [Help guide](./docs/help/README.md) and command-specific help references
+- [Developer primer](./docs/primer/README.md) for a practical codebase tour
 
 ## Roadmap
 
 Vaar's intends to become the one stop solution for all things related to environment variables.
 
-For now, this includes all possible linting rules that can help prevent issues related to environments in codebases broadly divided into the given [Evidence-Based Categories](/docs/lint/rules/README.md).
+### Current commands
 
-### Deterministic
+- `vaar lint` checks dotenv syntax and deterministic formatting rules, with safe
+  fixes where the result is unambiguous.
+- `vaar diff` compares key presence between two dotenv documents without
+  exposing their values.
 
-These findings are deterministic in nature.
+### Planned analysis sources
 
-- Already implemented: deterministic `.env` hygiene, stable text and JSON reporting and safe normalization fixes.
-- Straightforward next steps: a few more line-level hygiene rules and small parser or reporter refinements.
-- Examples: duplicate keys, trailing whitespace, a missing final newline, mixed line endings or a UTF-8 BOM.
+- source-code usage and repository structure
+- contracts and schemas
+- Docker, CI and framework configuration
+- optional external providers and cloud state
 
-### Contextual
+### Planned command capabilities
 
-These findings are based on project and it requires codebase context.
-
-- Straightforward next steps: compare `.env` with `.env.example`, scan source and config files for env usage and look for drift in Docker Compose or GitHub Actions.
-- Requires more design: smarter inventory checks, framework-aware rules and better drift detection.
-- Examples: a variable used in code but missing from the example file, stale keys that no longer appear in the repo or undocumented env names.
-
-### Heuristic
-
-These findings are based on general practices and heuristic patterns which are suspicious or potentially dangerous.
-
-- Requires more design: suspicious public env names or secret-like values that should be reviewed by a human should be flagged by Vaar as warnings.
-- Examples: a token-shaped string in a public example file or a naming pattern that looks risky but still needs review.
-
-### External
-
-These findings are dependent on external APIs or third-party tools for verification
-
-- Out of scope for now: cloud or provider drift, external scanners, team sync, access-control checks and audit integrations.
-- Examples: confirming exposure through a third-party service or checking provider state through an API.
+- `vaar query` for inspecting supported environment facts and status
+- broader lint rules that use repository context and explicit contracts
+- richer diff comparisons across supported sources and scopes
+- machine-readable integrations such as SARIF and CI annotations
 
 > [!NOTE]
-> These goals are not set in stone and are subject to change. If you wish to request a goal to be modified, added/removed or some new direction/scope that the team should explore, please reach out by sending a mail to [core@envaar.dev](mailto:core@envaar.dev) or open a [Discussion](https://github.com/envaar/vaar/discussions).
+> These goals are not set in stone and are subject to change. To propose a
+> change in direction or scope, contact [core@envaar.dev](mailto:core@envaar.dev)
+> or open a [Discussion](https://github.com/envaar/vaar/discussions).
 
 ## Non-goals
 
@@ -238,7 +177,7 @@ Vaar is intentionally focused on environment and configurational correctness acr
 - a generic configuration platform for arbitrary file formats rather than environment-variable correctness.
 - a secret manager or vault replacement.
 - a guessy scanner that reports weak patterns without clear evidence or reviewable context.
-- a deployment or infrastructure orchestration tool that goes overreaches beyond environment correctness.
+- a deployment or infrastructure orchestration tool that goes beyond environment correctness.
 
 Those boundaries are intentional. Vaar should stay focused before it grows broader.
 
@@ -260,7 +199,15 @@ Those boundaries are intentional. Vaar should stay focused before it grows broad
 
 ## Documentation
 
-Please refer to [/docs](/docs/) for all necessary documentation. If you are unsure where to start, try reading [Usage](/docs/usage.md). New developers can read the [Primer](/docs/primer/README.md) for a fast, hands-on tour of how Vaar works.
+Vaar's documentation is being moved to
+[vaar.envaar.dev/docs](https://vaar.envaar.dev/docs), where command usage and other reference material will be organized.
+
+The documentation at /docs is the developer and maintainer documentation:
+
+- [Map of Commands](./docs/usage.md)
+- [Developer Primer](./docs/primer/README.md)
+- [System Overview](./docs/system-overview.md)
+- [Contributing Guide](./CONTRIBUTING.md)
 
 ## System Overview and Repository Layout
 
@@ -272,9 +219,9 @@ Please read [Development Workflow](./CONTRIBUTING.md) to understand the typical 
 
 ## FAQ / Troubleshooting
 
-- If nothing was flagged, Vaar scanned the current working tree and did not find anything to report. Confirm you are in the repository/root you meant to scan.
+- If lint reports nothing, Vaar scanned the selected scope and found no remaining findings. Confirm you are in the repository/root you meant to scan.
+- If diff reports no key differences, both dotenv files contain the same declared key set. Values are not compared.
 - To verify a downloaded binary, compare it against `vaar_checksums.txt` and then run `vaar --version` after extraction.
-- Exit codes are intentionally simple: `0` means no findings remain after an optional `--fix` pass, `1` means findings remain and `2` means the command failed before producing results.
 
 ## Contributing
 
