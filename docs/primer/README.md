@@ -68,7 +68,7 @@ analysis, lint and output boundaries together:
 3. Load selected dotenv sources and convert them into a value-free analysis snapshot.
 4. Run the selected rules against that snapshot.
 5. If `--fix` is enabled, build a safe mutation plan, validate the
-   complete plan, apply safe changes, reload the changed files, rebuild
+   complete plan, apply safe changes, reload the selected scope, rebuild
    analysis and rerun the rules, marking findings that disappeared as
    `[fixed]`.
 6. Sort the findings into a stable order.
