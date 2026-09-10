@@ -33,9 +33,10 @@ These principles detailed in the [System Overview](../system-overview.md) and ar
 
 - Deterministic first. Every rule is currently under `internal/lint/rules/deterministic/` and reports an exact finding from file content.
 - Stable ordering and output. Findings are sorted by file, line, severity, rule and message so scripts and CI can rely on the result.
-- Preserve original file state where possible. The dotenv source keeps original
-  bytes, line numbers, BOM state and line-ending information available to the
-  source and mutation boundaries, while analysis exposes only safe facts.
+- Preserve original file state where possible. The dotenv source and mutation
+  boundaries may retain original bytes, line numbers, BOM state and
+  line-ending information, while analysis exposes only safe facts to engines
+  and reporters.
 - Keep the command layer thin. `internal/cli/` handles command wiring, flags and exit codes while the main logic stays in focused packages.
 
 ## Components
@@ -52,7 +53,7 @@ main responsibility.
 | Analysis          | `internal/analysis/`, `internal/analysis/dotenv/` | Converts source documents into ordered, value-free facts and key inventories.                                                                                           |
 | Rule engine       | `internal/lint/`                                  | Selects rules with `--only`/`--skip`, runs them against analysis and sorts findings.                                                                                    |
 | Lint application  | `internal/application/lint/`                      | Coordinates loading, analysis, lint execution and optional mutation re-analysis.                                                                                        |
-| Mutations         | `internal/mutations/`                             | Plans, validates and safely applies selected fixes through `internal/fs/`.                                                                                              |
+| Mutations         | `internal/mutations/`                             | Plans fixes without filesystem I/O, validates the complete plan and applies safe per-file replacements through `internal/fs/`.                                          |
 | Diff application  | `internal/application/diff/`, `internal/diff/`    | Loads both operands, builds analysis inventories and compares keys.                                                                                                     |
 | Rule registry     | `internal/lint/rules/`                            | `All()` returns the built-in rule set in a stable order over the category packages.                                                                                     |
 | Report / output   | `internal/output/`                                | Renders typed lint and diff results as plain text or JSON.                                                                                                              |
@@ -66,14 +67,24 @@ analysis, lint and output boundaries together:
 2. Resolve the lint scope: the whole repository, one `--target` file or one `--target-dir` tree.
 3. Load selected dotenv sources and convert them into a value-free analysis snapshot.
 4. Run the selected rules against that snapshot.
-5. If `--fix` is enabled, build and apply a safe mutation plan, reload the
-   changed files, rebuild analysis and rerun the rules, marking findings that
-   disappeared as `[fixed]`.
+5. If `--fix` is enabled, build a safe mutation plan, validate the
+   complete plan, apply safe changes, reload the selected scope, rebuild
+   analysis and rerun the rules, marking findings that disappeared as
+   `[fixed]`.
 6. Sort the findings into a stable order.
 7. Render the typed result through `internal/output/`.
 8. Map the result to an exit code in `internal/cli/`.
 
 Each finding carries a severity (`warn` or `error`), a rule name, the file, a line number and a message. The built-in rules are catalogued in [docs/lint/rules/README.md](../lint/rules/README.md).
+
+Mutation application validates every planned destination before it creates a
+replacement. It rejects duplicate physical destinations, coordinates Vaar
+writers through shared locks, and rechecks the target identity, content and
+permission bits before finalization. Each replacement uses a same-directory
+temporary file and the captured permission mode. The plan applies changes in
+order; it does not provide a transaction or rollback across multiple files.
+Vaar's stale-state guarantee covers writers that use the shared filesystem
+primitives.
 
 ### How A Diff Run Works
 

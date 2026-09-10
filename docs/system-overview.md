@@ -11,6 +11,8 @@ Vaar keeps the command layer thin and pushes the real logic into a few focused p
 - Keep parsing, source modeling and pure byte transforms in
   `internal/source/`; keep generic filesystem mechanics in `internal/fs/`.
 - Keep normalized analysis facts value-free in `internal/analysis/`.
+- Keep raw source state inside the source and mutation boundaries. Engines and
+  reporters consume value-free analysis facts and typed results.
 - Make repository discovery explicit and deterministic.
 - Prefer stable ordering and stable output so that scripts can rely on results.
 - Preserve original environment file state unless a safe fix intentionally changes them.
@@ -42,16 +44,28 @@ Vaar keeps the command layer thin and pushes the real logic into a few focused p
 2. Load the selected files through `internal/source/dotenv`.
 3. Convert source documents into a value-free `internal/analysis` snapshot.
 4. Select rules and run the lint engine against that snapshot.
-5. If automatic safe fixing is enabled with `--fix`, build and validate a
-   mutation plan, apply it through the mutation/filesystem boundaries, then
-   reload and re-analyse the same scope.
+5. If automatic safe fixing is enabled with `--fix`, build a safe
+   mutation plan, validate the complete plan, apply it through the
+   mutation/filesystem helpers, then reload and re-analyse the same scope.
 6. Sort findings into a stable order.
 7. Render the typed result through `internal/output`.
 8. Map the final result to the command exit code at the CLI boundary.
 
-The source boundary keeps original bytes, line numbers, BOM state and
-line-ending information available to source and mutation stages. The analysis
-snapshot exposes only safe, value-free facts to engines and reporters.
+The source boundary may retain original bytes, line numbers, BOM state and
+line-ending information for source and mutation stages. The analysis snapshot
+exposes only safe, value-free facts to engines and reporters. Mutation planning
+does not read or write the filesystem; it operates on documents that the
+application has already loaded.
+
+Mutation application validates every planned destination before it creates a
+replacement. It rejects duplicate physical destinations, coordinates Vaar
+writers through shared path and target locks, and revalidates target identity,
+content and permission bits before finalization. Each replacement uses a
+same-directory temporary file and applies the captured permission mode before
+the destination changes. The plan applies replacements in document order. It
+does not provide a transaction or rollback across the complete plan, so a
+later failure does not undo an earlier successful replacement. The stale-state
+guarantee covers writers that use Vaar's shared filesystem primitives.
 
 ## How a Diff Run Works
 
@@ -76,6 +90,8 @@ lines or source bytes.
 - Repository walking or ignore logic: `internal/fs/`
 - Dotenv parsing and source-specific formatting transforms: `internal/source/dotenv/`
 - Scope selection: `internal/scope/`
+- Shared value-free facts and key inventories: `internal/analysis/`
+- Dotenv-to-analysis conversion: `internal/analysis/dotenv/`
 - Rule selection and execution: `internal/lint/`
 - Lint workflow orchestration: `internal/application/lint/`
 - Mutation planning and application: `internal/mutations/`
